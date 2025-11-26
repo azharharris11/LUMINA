@@ -1,0 +1,129 @@
+
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LUMINA Studio Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600&family=Syne:wght@400;600;700;800&family=Playfair+Display:ital,wght@0,400;0,700;1,400&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        /* DEFAULT DARK THEME (Stone/Zinc) */
+        --base: 12 10 9;        /* #0c0a09 */
+        --surface: 28 25 23;    /* #1c1917 */
+        --highlight: 41 37 36;  /* #292524 */
+        
+        --text-main: 231 229 228; /* #e7e5e4 (Stone 200) - Was 'white' mostly */
+        --text-muted: 120 113 108; /* #78716c (Stone 500) */
+        
+        --accent: 190 242 100;  /* #bef264 (Lime 300) */
+        --danger: 244 63 94;    /* #f43f5e (Rose 500) */
+        
+        --font-heading: 'Syne', sans-serif;
+        --font-body: 'Outfit', sans-serif;
+      }
+
+      .light-mode {
+        /* LIGHT THEME (Paper/Ink) */
+        --base: 250 250 249;    /* #fafaf9 (Stone 50) */
+        --surface: 255 255 255; /* #ffffff */
+        --highlight: 229 231 235; /* #e5e7eb (Gray 200) */
+        
+        --text-main: 12 10 9;    /* #0c0a09 (Stone 950) - Inverted */
+        --text-muted: 87 83 78;  /* #57534e (Stone 600) */
+        
+        --accent: 101 163 13;   /* #65a30d (Lime 600) - Darker for visibility on light */
+      }
+
+      body {
+        font-family: var(--font-body);
+        background-color: rgb(var(--base));
+        color: rgb(var(--text-main));
+        transition: background-color 0.3s ease, color 0.3s ease;
+      }
+      h1, h2, h3, h4, h5, h6 {
+        font-family: var(--font-heading);
+      }
+      /* Custom Scrollbar */
+      ::-webkit-scrollbar {
+        width: 6px;
+        height: 6px;
+      }
+      ::-webkit-scrollbar-track {
+        background: rgb(var(--surface)); 
+      }
+      ::-webkit-scrollbar-thumb {
+        background: rgb(var(--highlight)); 
+        border-radius: 3px;
+      }
+      ::-webkit-scrollbar-thumb:hover {
+        background: rgb(var(--accent)); 
+      }
+      
+      /* Global Overrides for Consistency in Light Mode */
+      .light-mode .text-white {
+        color: rgb(var(--text-main)) !important;
+      }
+      /* Elements that MUST remain white even in light mode (e.g. text on dark buttons) */
+      .light-mode .text-real-white,
+      .light-mode .bg-rose-500 .text-white,
+      .light-mode .bg-emerald-500 .text-white,
+      .light-mode .bg-blue-500 .text-white,
+      .light-mode .bg-black .text-white,
+      .light-mode .bg-stone-900 .text-white,
+      .light-mode .group:hover .group-hover\:text-white {
+         color: #ffffff !important;
+      }
+    </style>
+    <script>
+      tailwind.config = {
+        darkMode: 'class', // Manual toggling via class
+        theme: {
+          extend: {
+            colors: {
+              lumina: {
+                base: 'rgb(var(--base) / <alpha-value>)',
+                surface: 'rgb(var(--surface) / <alpha-value>)',
+                highlight: 'rgb(var(--highlight) / <alpha-value>)',
+                accent: 'rgb(var(--accent) / <alpha-value>)',
+                muted: 'rgb(var(--muted) / <alpha-value>)',
+                danger: 'rgb(var(--danger) / <alpha-value>)',
+                text: 'rgb(var(--text-main) / <alpha-value>)', // Semantic text color
+              },
+              // Custom utility for absolute white regardless of theme
+              'real-white': '#ffffff',
+            },
+            fontFamily: {
+              sans: ['Outfit', 'sans-serif'],
+              display: ['Syne', 'sans-serif'],
+              serif: ['Playfair Display', 'serif'],
+            }
+          }
+        }
+      }
+    </script>
+  <script type="importmap">
+{
+  "imports": {
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
+    "recharts": "https://aistudiocdn.com/recharts@^3.5.0",
+    "framer-motion": "https://aistudiocdn.com/framer-motion@^12.23.24",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+    "firebase/auth": "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
+    "firebase/analytics": "https://www.gstatic.com/firebasejs/10.8.0/firebase-analytics.js",
+    "firebase/": "https://aistudiocdn.com/firebase@^12.6.0/"
+  }
+}
+</script>
+</head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>
