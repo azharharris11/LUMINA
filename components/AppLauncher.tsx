@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { motion } from 'framer-motion';
 import { LayoutDashboard, Globe, ArrowRight, Aperture } from 'lucide-react';
@@ -32,7 +31,7 @@ const AppLauncher: React.FC<AppLauncherProps> = ({ user, onSelectApp, onLogout }
             </div>
         </div>
         <h1 className="text-4xl md:text-5xl font-display font-bold text-white mb-2">
-          Welcome back, {user.name.split(' ')[0]}
+          Welcome back, {(user.name || '').split(' ')[0]}
         </h1>
         <p className="text-lumina-muted text-lg">Select a workspace to continue</p>
       </Motion.div>

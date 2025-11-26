@@ -1,10 +1,12 @@
 
 
 
+
+
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Package, StudioConfig, SettingsViewProps, StudioRoom, Booking, User, WorkflowAutomation, ProjectStatus } from '../types';
-import { Settings as SettingsIcon, Tag, Plus, Edit2, ToggleLeft, ToggleRight, Building, Save, X, Layout, MessageSquare, Trash2, Clock, DollarSign, AlertCircle, Sliders, Briefcase, Bell, Link, User as UserIcon, CheckCircle2, Calendar, Archive, CreditCard, Smartphone, Download, RefreshCcw, HardDrive, Check, Zap } from 'lucide-react';
+import { Package, StudioConfig, SettingsViewProps, StudioRoom, Booking, User, WorkflowAutomation, ProjectStatus, Asset } from '../types';
+import { Settings as SettingsIcon, Tag, Plus, Edit2, ToggleLeft, ToggleRight, Building, Save, X, Layout, MessageSquare, Trash2, Clock, DollarSign, AlertCircle, Sliders, Briefcase, Bell, Link, User as UserIcon, CheckCircle2, Calendar, Archive, CreditCard, Smartphone, Download, RefreshCcw, HardDrive, Check, Zap, ListChecks, Box } from 'lucide-react';
 
 const Motion = motion as any;
 
@@ -12,11 +14,12 @@ interface ExtendedSettingsViewProps extends SettingsViewProps {
     bookings?: Booking[];
     googleToken?: string | null;
     setGoogleToken?: (token: string | null) => void;
+    assets?: Asset[];
 }
 
 declare var google: any;
 
-const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, onAddPackage, onUpdatePackage, onDeletePackage, onUpdateConfig, bookings = [], currentUser, onUpdateUserProfile, onDeleteAccount, googleToken, setGoogleToken }) => {
+const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, onAddPackage, onUpdatePackage, onDeletePackage, onUpdateConfig, bookings = [], currentUser, onUpdateUserProfile, onDeleteAccount, googleToken, setGoogleToken, assets = [] }) => {
   const [activeTab, setActiveTab] = useState('GENERAL');
   const [localConfig, setLocalConfig] = useState<StudioConfig>(config);
   
@@ -48,8 +51,9 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
   
   const [showAddPackage, setShowAddPackage] = useState(false);
   const [isEditingPackage, setIsEditingPackage] = useState(false);
-  const [newPackage, setNewPackage] = useState<Partial<Package>>({ name: '', price: 0, duration: 1, features: [], active: true, costBreakdown: [], turnaroundDays: 7 });
+  const [newPackage, setNewPackage] = useState<Partial<Package>>({ name: '', price: 0, duration: 1, features: [], active: true, costBreakdown: [], turnaroundDays: 7, defaultTasks: [], defaultAssetIds: [] });
   const [featureInput, setFeatureInput] = useState('');
+  const [packageTaskInput, setPackageTaskInput] = useState('');
   
   const [newRoom, setNewRoom] = useState<Partial<StudioRoom>>({ name: '', type: 'INDOOR', color: 'gray' });
 
@@ -84,9 +88,6 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
 
       const client = google.accounts.oauth2.initTokenClient({
           client_id: CLIENT_ID,
-          // SCOPES: 
-          // calendar.events: Read/Write Calendar
-          // drive: FULL Access required to create/rename/delete generic folders user owns
           scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
           callback: (tokenResponse: any) => {
               if (tokenResponse && tokenResponse.access_token) {
@@ -107,7 +108,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
   };
 
   const handleEditPackage = (pkg: Package) => {
-      setNewPackage({ ...pkg, turnaroundDays: pkg.turnaroundDays || 7 }); 
+      setNewPackage({ ...pkg, turnaroundDays: pkg.turnaroundDays || 7, defaultTasks: pkg.defaultTasks || [], defaultAssetIds: pkg.defaultAssetIds || [] }); 
       setIsEditingPackage(true);
       setShowAddPackage(true);
   };
@@ -142,6 +143,36 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
       }));
   };
 
+  // Package Task Handlers
+  const addPackageTask = () => {
+      if (packageTaskInput.trim()) {
+          setNewPackage(prev => ({
+              ...prev,
+              defaultTasks: [...(prev.defaultTasks || []), packageTaskInput.trim()]
+          }));
+          setPackageTaskInput('');
+      }
+  };
+
+  const removePackageTask = (index: number) => {
+      setNewPackage(prev => ({
+          ...prev,
+          defaultTasks: (prev.defaultTasks || []).filter((_, i) => i !== index)
+      }));
+  };
+
+  // Package Asset Bundling
+  const togglePackageAsset = (assetId: string) => {
+      setNewPackage(prev => {
+          const current = prev.defaultAssetIds || [];
+          if (current.includes(assetId)) {
+              return { ...prev, defaultAssetIds: current.filter(id => id !== assetId) };
+          } else {
+              return { ...prev, defaultAssetIds: [...current, assetId] };
+          }
+      });
+  };
+
   const handleSavePackage = () => {
       const pkgData = {
           name: newPackage.name,
@@ -150,7 +181,9 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
           features: newPackage.features || [],
           active: true,
           costBreakdown: newPackage.costBreakdown || [],
-          turnaroundDays: Number(newPackage.turnaroundDays) || 7
+          turnaroundDays: Number(newPackage.turnaroundDays) || 7,
+          defaultTasks: newPackage.defaultTasks || [],
+          defaultAssetIds: newPackage.defaultAssetIds || []
       };
 
       if (isEditingPackage && onUpdatePackage && newPackage.id) {
@@ -161,8 +194,9 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
       
       setShowAddPackage(false);
       setIsEditingPackage(false);
-      setNewPackage({ name: '', price: 0, duration: 1, features: [], active: true, costBreakdown: [], turnaroundDays: 7 });
+      setNewPackage({ name: '', price: 0, duration: 1, features: [], active: true, costBreakdown: [], turnaroundDays: 7, defaultTasks: [], defaultAssetIds: [] });
       setFeatureInput('');
+      setPackageTaskInput('');
   };
 
   const handleConfigChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -344,6 +378,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
+            {/* ... (General, Operations, Profile tabs remain same) ... */}
             {activeTab === 'GENERAL' && (
                  <Motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-8">
                     <div className="flex justify-between items-start mb-8">
@@ -627,7 +662,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                             <h2 className="text-xl font-bold text-white">Service Packages</h2>
                             <p className="text-sm text-lumina-muted">Manage the catalog of services available for booking.</p>
                         </div>
-                        <button type="button" onClick={() => { setIsEditingPackage(false); setNewPackage({name:'', price:0, duration:1, features: [], costBreakdown: [], turnaroundDays: 7}); setShowAddPackage(true); }} className="flex items-center gap-2 bg-lumina-accent text-lumina-base px-4 py-2 rounded-lg font-bold hover:bg-lumina-accent/90 transition-colors">
+                        <button type="button" onClick={() => { setIsEditingPackage(false); setNewPackage({name:'', price:0, duration:1, features: [], costBreakdown: [], turnaroundDays: 7, defaultTasks: [], defaultAssetIds: []}); setShowAddPackage(true); }} className="flex items-center gap-2 bg-lumina-accent text-lumina-base px-4 py-2 rounded-lg font-bold hover:bg-lumina-accent/90 transition-colors">
                             <Plus size={16} /> Add Package
                         </button>
                     </div>
@@ -653,24 +688,71 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                                  </div>
                              </div>
                              
-                             <div className="mb-4">
-                                 <label className="text-xs text-lumina-muted uppercase font-bold block mb-1">Features</label>
-                                 <div className="flex gap-2 mb-2">
-                                     <input 
-                                        className="flex-1 bg-lumina-base border border-lumina-highlight p-2 rounded text-white"
-                                        placeholder="Add feature (e.g. 'All Raw Files')"
-                                        value={featureInput}
-                                        onChange={e => setFeatureInput(e.target.value)}
-                                        onKeyDown={e => e.key === 'Enter' && addFeature()}
-                                     />
-                                     <button onClick={addFeature} className="bg-lumina-highlight text-white px-3 py-2 rounded hover:bg-lumina-accent hover:text-lumina-base font-bold">+</button>
+                             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                 {/* Features */}
+                                 <div className="mb-4">
+                                     <label className="text-xs text-lumina-muted uppercase font-bold block mb-1">Features</label>
+                                     <div className="flex gap-2 mb-2">
+                                         <input 
+                                            className="flex-1 bg-lumina-base border border-lumina-highlight p-2 rounded text-white"
+                                            placeholder="Add feature (e.g. 'All Raw Files')"
+                                            value={featureInput}
+                                            onChange={e => setFeatureInput(e.target.value)}
+                                            onKeyDown={e => e.key === 'Enter' && addFeature()}
+                                         />
+                                         <button onClick={addFeature} className="bg-lumina-highlight text-white px-3 py-2 rounded hover:bg-lumina-accent hover:text-lumina-base font-bold">+</button>
+                                     </div>
+                                     <div className="flex flex-wrap gap-2">
+                                         {newPackage.features?.map((f, i) => (
+                                             <span key={i} className="bg-lumina-base px-2 py-1 rounded text-xs text-white border border-lumina-highlight flex items-center gap-1">
+                                                 {f} <button onClick={() => removeFeature(i)} className="hover:text-rose-500"><X size={10}/></button>
+                                             </span>
+                                         ))}
+                                     </div>
                                  </div>
-                                 <div className="flex flex-wrap gap-2">
-                                     {newPackage.features?.map((f, i) => (
-                                         <span key={i} className="bg-lumina-base px-2 py-1 rounded text-xs text-white border border-lumina-highlight flex items-center gap-1">
-                                             {f} <button onClick={() => removeFeature(i)} className="hover:text-rose-500"><X size={10}/></button>
-                                         </span>
-                                     ))}
+
+                                 {/* WORKFLOW & ASSETS */}
+                                 <div className="mb-4 space-y-4">
+                                     <div>
+                                         <label className="text-xs text-lumina-muted uppercase font-bold block mb-1 flex items-center gap-1"><ListChecks size={12}/> Default Tasks (Automation)</label>
+                                         <div className="flex gap-2 mb-2">
+                                             <input 
+                                                className="flex-1 bg-lumina-base border border-lumina-highlight p-2 rounded text-white"
+                                                placeholder="e.g. Send Moodboard"
+                                                value={packageTaskInput}
+                                                onChange={e => setPackageTaskInput(e.target.value)}
+                                                onKeyDown={e => e.key === 'Enter' && addPackageTask()}
+                                             />
+                                             <button onClick={addPackageTask} className="bg-lumina-highlight text-white px-3 py-2 rounded hover:bg-lumina-accent hover:text-lumina-base font-bold">+</button>
+                                         </div>
+                                         <div className="flex flex-wrap gap-2">
+                                             {newPackage.defaultTasks?.map((t, i) => (
+                                                 <span key={i} className="bg-lumina-base px-2 py-1 rounded text-xs text-lumina-accent border border-lumina-highlight flex items-center gap-1">
+                                                     {t} <button onClick={() => removePackageTask(i)} className="hover:text-rose-500"><X size={10}/></button>
+                                                 </span>
+                                             ))}
+                                         </div>
+                                     </div>
+
+                                     <div>
+                                         <label className="text-xs text-lumina-muted uppercase font-bold block mb-1 flex items-center gap-1"><Box size={12}/> Bundled Equipment</label>
+                                         <div className="bg-lumina-base border border-lumina-highlight rounded p-2 max-h-32 overflow-y-auto custom-scrollbar flex flex-wrap gap-2">
+                                             {assets.map(asset => (
+                                                 <button 
+                                                    key={asset.id}
+                                                    onClick={() => togglePackageAsset(asset.id)}
+                                                    className={`px-2 py-1 rounded text-xs border transition-colors
+                                                        ${(newPackage.defaultAssetIds || []).includes(asset.id) 
+                                                            ? 'bg-lumina-accent text-lumina-base border-lumina-accent font-bold' 
+                                                            : 'bg-lumina-surface text-lumina-muted border-lumina-highlight hover:text-white'}
+                                                    `}
+                                                 >
+                                                     {asset.name}
+                                                 </button>
+                                             ))}
+                                             {assets.length === 0 && <span className="text-xs text-lumina-muted italic">No assets in inventory.</span>}
+                                         </div>
+                                     </div>
                                  </div>
                              </div>
 
@@ -703,6 +785,18 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                                         </div>
                                     </div>
                                     <p className="text-2xl font-bold text-white mb-4">Rp {pkg.price.toLocaleString()}</p>
+                                    <div className="flex gap-2 mb-3">
+                                        {pkg.defaultAssetIds && pkg.defaultAssetIds.length > 0 && (
+                                            <span className="text-[10px] bg-blue-500/10 text-blue-400 px-2 py-0.5 rounded border border-blue-500/20 flex items-center gap-1">
+                                                <Box size={10}/> {pkg.defaultAssetIds.length} Assets Bundled
+                                            </span>
+                                        )}
+                                        {pkg.defaultTasks && pkg.defaultTasks.length > 0 && (
+                                            <span className="text-[10px] bg-purple-500/10 text-purple-400 px-2 py-0.5 rounded border border-purple-500/20 flex items-center gap-1">
+                                                <ListChecks size={10}/> {pkg.defaultTasks.length} Auto-Tasks
+                                            </span>
+                                        )}
+                                    </div>
                                     <ul className="space-y-1 text-xs text-lumina-muted">
                                         {pkg.features.map((f, i) => <li key={i}>• {f}</li>)}
                                     </ul>
@@ -713,6 +807,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                 </Motion.div>
             )}
 
+            {/* ... (Studios, Integrations, Notifications, Templates, System tabs remain same) ... */}
             {activeTab === 'STUDIOS' && (
                 <div className="space-y-6">
                     <div className="flex gap-2 bg-lumina-surface p-4 rounded-xl border border-lumina-highlight mb-6">

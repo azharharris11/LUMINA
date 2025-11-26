@@ -1,4 +1,6 @@
 
+
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SiteBuilderViewProps, SiteGalleryItem, SiteTestimonial, SiteFAQ, SitePage, SiteSection, SectionType, SiteTheme, SiteConfig } from '../types';
@@ -58,9 +60,10 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
   const [newPageName, setNewPageName] = useState('');
 
   // State for New Components
-  const [newTestimonial, setNewTestimonial] = useState<Partial<SiteTestimonial>>({ clientName: '', text: '', rating: 5 });
-  const [newFAQ, setNewFAQ] = useState<Partial<SiteFAQ>>({ question: '', answer: '' });
   const [newGalleryUrl, setNewGalleryUrl] = useState('');
+
+  // REAL PUBLIC URL
+  const publicUrl = `${window.location.origin}?site=${config.ownerId || 'me'}`;
 
   useEffect(() => {
       setLocalSite(config.site);
@@ -140,30 +143,10 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
       setHasChanges(true);
   };
 
-  const handleSEOChange = (key: string, value: any) => {
-      setLocalSite(prev => ({ ...prev, seo: { ...prev.seo, [key]: value } }));
-      setHasChanges(true);
-  };
-
   const handlePixelChange = (key: string, value: any) => {
       setLocalSite(prev => ({ ...prev, pixels: { ...prev.pixels, [key]: value } }));
       setHasChanges(true);
   };
-
-  const handleAnnouncementChange = (key: string, value: any) => {
-      setLocalSite(prev => ({ ...prev, announcement: { ...prev.announcement, [key]: value } }));
-      setHasChanges(true);
-  };
-  
-  const handleBeforeAfterChange = (key: string, value: any) => {
-      setLocalSite(prev => ({ ...prev, beforeAfter: { ...prev.beforeAfter, [key]: value } }));
-      setHasChanges(true);
-  };
-
-  const handleBrandingChange = (key: string, value: any) => {
-      setLocalSite(prev => ({ ...prev, branding: { ...prev.branding, [key]: value } }));
-      setHasChanges(true);
-  }
 
   // --- PAGE MANAGEMENT ---
   const handleAddPage = () => {
@@ -346,7 +329,6 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
 
   return (
     <div className="h-screen w-full flex bg-lumina-base overflow-hidden relative">
-      {/* ... (Rest of UI remains same) ... */}
       <motion.div 
         initial={{ x: -50, opacity: 0 }}
         animate={{ x: 0, opacity: 1 }}
@@ -362,7 +344,7 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
                     <h2 className="font-bold text-white text-sm">Site Editor</h2>
                     <div className="flex items-center gap-2">
                         <span className={`w-2 h-2 rounded-full ${hasChanges ? 'bg-amber-400 animate-pulse' : 'bg-emerald-500'}`}></span>
-                        <span className="text-[10px] text-lumina-muted">{hasChanges ? 'Unsaved Changes' : 'Saved'}</span>
+                        <span className="text-[10px] text-lumina-muted">{hasChanges ? 'Unsaved Changes' : 'Published'}</span>
                     </div>
                 </div>
             </div>
@@ -431,7 +413,6 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
         {/* Tab Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-6 bg-lumina-surface/50">
             
-            {/* ... (Design, Gallery, Marketing tabs remain same) ... */}
             {activeTab === 'CONTENT' && (
                 <div className="space-y-6">
                     <div className="space-y-3">
@@ -514,8 +495,6 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
                 </div>
             )}
 
-            {/* ... (Sections, Marketing, Pages, Gallery Tabs remain same) ... */}
-            {/* === TAB: SECTIONS (MODULAR) === */}
             {activeTab === 'SECTIONS' && (
                 <div className="space-y-6">
                     {activePageId === 'HOME' ? (
@@ -568,16 +547,12 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
                 </div>
             )}
 
-            {/* ... (Marketing, Pages, Gallery Tabs) ... */}
-            {/* Just ensuring other tabs render normally */}
             {activeTab === 'MARKETING' && (
                 <div className="space-y-6">
-                    {/* ... */}
                     <div className="bg-lumina-base border border-lumina-highlight rounded-xl p-4 space-y-3">
                         <h4 className="text-xs font-bold text-lumina-muted uppercase tracking-wider flex items-center gap-2">
                             <Target size={14}/> Tracking Pixels
                         </h4>
-                        {/* Inputs... */}
                         <div>
                             <label className="text-[10px] font-bold text-lumina-muted uppercase block mb-1">Meta Pixel ID (Facebook)</label>
                             <input 
@@ -587,15 +562,12 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
                                 placeholder="1234567890"
                             />
                         </div>
-                        {/* ... */}
                     </div>
-                    {/* ... */}
                 </div>
             )}
             
             {activeTab === 'PAGES' && (
                 <div className="space-y-6">
-                    {/* ... */}
                     <div className="flex gap-2">
                         <input 
                             value={newPageName}
@@ -605,7 +577,6 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
                         />
                         <button onClick={handleAddPage} disabled={!newPageName} className="px-3 py-2 bg-lumina-accent text-lumina-base rounded-lg font-bold text-xs hover:bg-lumina-accent/90 disabled:opacity-50">Add</button>
                     </div>
-                    {/* ... */}
                     <div className="space-y-2">
                         {localSite.pages?.map(page => (
                             <div key={page.id} className="flex items-center justify-between p-3 bg-lumina-base border border-lumina-highlight rounded-xl group">
@@ -625,7 +596,6 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
 
             {activeTab === 'GALLERY' && (
                 <div className="space-y-4">
-                    {/* ... */}
                     <div className="flex gap-2">
                         <input 
                             value={newGalleryUrl}
@@ -645,7 +615,6 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
                             Add
                         </button>
                     </div>
-                    {/* ... */}
                 </div>
             )}
 
@@ -669,12 +638,13 @@ const SiteBuilderView: React.FC<ExtendedSiteBuilderViewProps> = ({ config, packa
                   <Smartphone size={18} />
               </button>
               <div className="w-px h-6 bg-lumina-highlight mx-2"></div>
+              {/* REAL PUBLIC LINK */}
               <a 
-                href={`https://${localSite.subdomain}.lumina.site`} 
+                href={publicUrl} 
                 target="_blank"
-                className="flex items-center gap-2 text-xs font-bold text-lumina-accent hover:underline"
+                className="flex items-center gap-2 text-xs font-bold text-lumina-accent hover:underline bg-lumina-accent/10 px-3 py-1 rounded-full border border-lumina-accent/20"
               >
-                  {localSite.subdomain}.lumina.site <ExternalLink size={12} />
+                  <Globe size={12} /> Visit Live Site <ExternalLink size={12} />
               </a>
           </div>
 

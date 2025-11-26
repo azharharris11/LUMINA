@@ -1,37 +1,47 @@
 
 
+
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { ArrowRightLeft, Wallet, FileText, AlertCircle, CheckCircle, ArrowUpRight, MessageCircle, FileInput, MinusCircle, CheckSquare, Search, Filter, Download, RotateCcw, Trash2, History } from 'lucide-react';
-import { FinanceViewProps } from '../types';
+import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
+import { ArrowRightLeft, Wallet, FileText, AlertCircle, CheckCircle, ArrowUpRight, MessageCircle, FileInput, MinusCircle, CheckSquare, Search, Filter, Download, RotateCcw, Trash2, History, Upload, Repeat, Paperclip, ArrowDownLeft, Calendar, Edit2, Plus, X, Save } from 'lucide-react';
+import { FinanceViewProps, Account } from '../types';
 import { STUDIO_CONFIG } from '../data';
 import InvoiceModal from '../components/InvoiceModal';
 import WhatsAppModal from '../components/WhatsAppModal';
 
 const Motion = motion as any;
 
-const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, transactions = [], onTransfer, onRecordExpense, onSettleBooking, onDeleteTransaction, config }) => {
+const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, transactions = [], onTransfer, onRecordExpense, onSettleBooking, onDeleteTransaction, config, onAddAccount, onUpdateAccount }) => {
   const [showTransferModal, setShowTransferModal] = useState(false);
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'INVOICES' | 'EXPENSES' | 'LEDGER'>('OVERVIEW');
   
+  // Account Management State
+  const [showAccountModal, setShowAccountModal] = useState(false);
+  const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [accountForm, setAccountForm] = useState<Partial<Account>>({ name: '', type: 'BANK', balance: 0, accountNumber: '' });
+
   const [invoiceFilter, setInvoiceFilter] = useState<'UNPAID' | 'PAID'>('UNPAID');
 
   const [transferForm, setTransferForm] = useState({ fromId: accounts[1]?.id || '', toId: accounts[0]?.id || '', amount: '' });
 
+  // Expense Form - Added Recurring & Receipt Support
   const [expenseForm, setExpenseForm] = useState({
       description: '',
       amount: '',
       category: 'Utilities & Rent',
-      accountId: accounts[0]?.id || ''
+      accountId: accounts[0]?.id || '',
+      isRecurring: false,
+      receiptUrl: ''
   });
 
   const [selectedBookingForInvoice, setSelectedBookingForInvoice] = useState<any | null>(null);
   const [selectedBookingForWA, setSelectedBookingForWA] = useState<any | null>(null);
   
-  const [settleForm, setSettleForm] = useState<{ bookingId: string | null, amount: number, maxAmount: number, currentPaidAmount: number, accountId: string }>({
-      bookingId: null, amount: 0, maxAmount: 0, currentPaidAmount: 0, accountId: accounts[0]?.id || ''
+  // Improved Settlement Form state
+  const [settleForm, setSettleForm] = useState<{ bookingId: string | null, amount: number, maxAmount: number, currentPaidAmount: number, accountId: string, mode: 'PAYMENT' | 'REFUND' }>({
+      bookingId: null, amount: 0, maxAmount: 0, currentPaidAmount: 0, accountId: accounts[0]?.id || '', mode: 'PAYMENT'
   });
 
   const getBookingFinancials = (b: any) => {
@@ -66,46 +76,38 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
       return dueAmount <= 100 && b.status !== 'CANCELLED' && b.status !== 'REFUNDED';
   }).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-  const totalReceivable = unpaidBookings.reduce((sum, b) => sum + getBookingFinancials(b).dueAmount, 0);
-  
   const displayBookings = invoiceFilter === 'UNPAID' ? unpaidBookings : paidBookings;
+
+  // --- CASH FLOW CHART DATA ---
+  const cashFlowData = useMemo(() => {
+      const dataMap = new Map<string, { date: string, income: number, expense: number }>();
+      
+      transactions.forEach(t => {
+          const dateKey = new Date(t.date).toLocaleDateString('en-CA'); // YYYY-MM-DD
+          const entry = dataMap.get(dateKey) || { date: dateKey, income: 0, expense: 0 };
+          
+          if (t.type === 'INCOME') entry.income += t.amount;
+          if (t.type === 'EXPENSE') entry.expense += t.amount;
+          
+          dataMap.set(dateKey, entry);
+      });
+
+      // Fill last 7 days if empty
+      const result = Array.from(dataMap.values()).sort((a, b) => a.date.localeCompare(b.date));
+      return result.slice(-14); // Last 14 active days
+  }, [transactions]);
 
   const expenseBreakdown = useMemo(() => {
       const breakdown = new Map<string, number>();
-      
-      transactions
-        .filter(t => t.type === 'EXPENSE')
-        .forEach(t => {
+      transactions.filter(t => t.type === 'EXPENSE').forEach(t => {
             const cat = t.category || 'Other';
-            const prev = breakdown.get(cat) || 0;
-            breakdown.set(cat, prev + t.amount);
-        });
-
+            breakdown.set(cat, (breakdown.get(cat) || 0) + t.amount);
+      });
       const colors = ['#f43f5e', '#f59e0b', '#3b82f6', '#a855f7', '#10b981', '#6366f1'];
-      const data = Array.from(breakdown.entries()).map(([name, value], index) => ({
-          name,
-          value,
-          color: colors[index % colors.length]
+      return Array.from(breakdown.entries()).map(([name, value], index) => ({
+          name, value, color: colors[index % colors.length]
       }));
-
-      if (data.length === 0) return [{ name: 'No Data', value: 1, color: '#333' }];
-      return data;
   }, [transactions]);
-  
-  const totalExpense = transactions.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + t.amount, 0);
-
-  const CustomTooltip = ({ active, payload, label }: any) => {
-    if (active && payload && payload.length) {
-      return (
-        <div className="bg-lumina-surface border border-lumina-highlight p-3 rounded-lg shadow-xl">
-          <p className="text-white font-bold font-display">{label}</p>
-          <p className="text-emerald-400 text-sm">Income: Rp {(payload[0].value / 1000000).toFixed(1)}M</p>
-          <p className="text-rose-400 text-sm">Exp: Rp {(payload[1].value / 1000000).toFixed(1)}M</p>
-        </div>
-      );
-    }
-    return null;
-  };
 
   const handleTransferSubmit = () => {
       if (onTransfer && transferForm.amount) {
@@ -121,69 +123,76 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
               description: expenseForm.description,
               amount: Number(expenseForm.amount),
               category: expenseForm.category,
-              accountId: expenseForm.accountId
+              accountId: expenseForm.accountId,
+              isRecurring: expenseForm.isRecurring,
+              receiptUrl: expenseForm.receiptUrl
           });
           setShowExpenseModal(false);
-          setExpenseForm({ description: '', amount: '', category: 'Utilities & Rent', accountId: accounts[0]?.id || '' });
+          setExpenseForm({ description: '', amount: '', category: 'Utilities & Rent', accountId: accounts[0]?.id || '', isRecurring: false, receiptUrl: '' });
       }
   };
 
   const handleSettleSubmit = () => {
       if (onSettleBooking && settleForm.bookingId) {
-          // Payment Validation
-          if (settleForm.amount > 0 && settleForm.amount > settleForm.maxAmount) {
-              alert("Amount exceeds remaining balance!");
-              return;
-          }
-          
-          // Refund Validation
-          if (settleForm.amount < 0) {
-              const refundAmount = Math.abs(settleForm.amount);
-              if (refundAmount > settleForm.currentPaidAmount) {
-                  alert(`Invalid Refund. You cannot refund more than the client has paid (Max Refund: Rp ${settleForm.currentPaidAmount.toLocaleString()}).`);
-                  return;
-              }
-
+          // Validation Logic
+          if (settleForm.mode === 'PAYMENT') {
+              if (settleForm.amount <= 0) { alert("Please enter a valid positive amount."); return; }
+              if (settleForm.amount > settleForm.maxAmount) { alert("Amount exceeds remaining balance!"); return; }
+              onSettleBooking(settleForm.bookingId, settleForm.amount, settleForm.accountId);
+          } else {
+              // REFUND Mode
+              if (settleForm.amount <= 0) { alert("Please enter a valid positive amount to refund."); return; }
+              if (settleForm.amount > settleForm.currentPaidAmount) { alert("Refund exceeds total paid amount."); return; }
+              
               const sourceAccount = accounts.find(a => a.id === settleForm.accountId);
-              if (sourceAccount && sourceAccount.balance < refundAmount) {
-                  alert(`Insufficient funds in ${sourceAccount.name} to process this refund.\nCurrent Balance: Rp ${sourceAccount.balance.toLocaleString()}`);
+              if (sourceAccount && sourceAccount.balance < settleForm.amount) {
+                  alert(`Insufficient funds in ${sourceAccount.name}.`); 
                   return;
               }
+              // Pass as negative to handler
+              onSettleBooking(settleForm.bookingId, -settleForm.amount, settleForm.accountId);
           }
-          
-          onSettleBooking(settleForm.bookingId, settleForm.amount, settleForm.accountId);
-          setSettleForm({ bookingId: null, amount: 0, maxAmount: 0, currentPaidAmount: 0, accountId: accounts[0]?.id || '' });
+          setSettleForm({ bookingId: null, amount: 0, maxAmount: 0, currentPaidAmount: 0, accountId: accounts[0]?.id || '', mode: 'PAYMENT' });
       }
   };
 
-  const handleExportCSV = () => {
-      const headers = ['ID', 'Date', 'Description', 'Category', 'Amount', 'Type', 'Account', 'Status'];
-      const rows = transactions.map(t => [
-          t.id,
-          new Date(t.date).toLocaleString(),
-          (t.description || '').replace(/,/g, ''),
-          t.category,
-          t.amount,
-          t.type,
-          accounts.find(a => a.id === t.accountId)?.name || 'Unknown',
-          t.status
-      ]);
+  const isOverdue = (dateStr: string) => {
+      const due = new Date(dateStr);
+      due.setDate(due.getDate() + (config.paymentDueDays || 0));
+      return new Date() > due;
+  };
 
-      const csvContent = "data:text/csv;charset=utf-8," 
-          + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+  // Account Management Handlers
+  const handleEditAccount = (acc: Account) => {
+      setEditingAccount(acc);
+      setAccountForm({ ...acc });
+      setShowAccountModal(true);
+  };
 
-      const encodedUri = encodeURI(csvContent);
-      const link = document.createElement("a");
-      link.setAttribute("href", encodedUri);
-      link.setAttribute("download", `lumina_finance_export_${new Date().toISOString().split('T')[0]}.csv`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+  const handleOpenAddAccount = () => {
+      setEditingAccount(null);
+      setAccountForm({ name: '', type: 'BANK', balance: 0, accountNumber: '' });
+      setShowAccountModal(true);
+  };
+
+  const handleAccountSubmit = () => {
+      if (editingAccount && onUpdateAccount) {
+          onUpdateAccount({ ...editingAccount, ...accountForm } as Account);
+      } else if (onAddAccount && accountForm.name) {
+          onAddAccount({
+              id: `acc-${Date.now()}`,
+              name: accountForm.name!,
+              type: accountForm.type as any,
+              balance: Number(accountForm.balance),
+              accountNumber: accountForm.accountNumber
+          } as Account);
+      }
+      setShowAccountModal(false);
   };
 
   return (
     <div className="space-y-6 pb-10 h-full flex flex-col">
-      {/* ... (Header and Tabs remain the same) ... */}
+      {/* Header */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end shrink-0">
         <div>
           <h1 className="text-4xl font-display font-bold text-white mb-2">Financial Hub</h1>
@@ -194,22 +203,13 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
             onClick={() => setShowExpenseModal(true)}
             className="bg-rose-500/10 text-rose-400 border border-rose-500/30 hover:bg-rose-500 hover:text-white px-4 py-2 rounded-xl font-bold transition-all flex items-center text-sm"
           >
-            <MinusCircle className="w-4 h-4 mr-2" />
-            Record Expense
+            <MinusCircle className="w-4 h-4 mr-2" /> Record Expense
           </button>
           <button 
             onClick={() => setShowTransferModal(!showTransferModal)}
             className="bg-lumina-surface border border-lumina-highlight text-white hover:bg-lumina-highlight px-4 py-2 rounded-xl font-bold transition-all flex items-center text-sm"
           >
-            <ArrowRightLeft className="w-4 h-4 mr-2" />
-            Transfer Funds
-          </button>
-          <button 
-            onClick={handleExportCSV}
-            className="bg-lumina-accent text-lumina-base px-4 py-2 rounded-xl font-bold transition-all flex items-center text-sm shadow-lg shadow-lumina-accent/10 hover:bg-lumina-accent/90"
-          >
-            <Download className="w-4 h-4 mr-2" />
-            Export Report
+            <ArrowRightLeft className="w-4 h-4 mr-2" /> Transfer Funds
           </button>
         </div>
       </div>
@@ -219,7 +219,7 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
             { id: 'OVERVIEW', label: 'Overview', icon: Wallet },
             { id: 'INVOICES', label: 'Invoices', icon: FileText, count: unpaidBookings.length },
             { id: 'EXPENSES', label: 'Expense Analysis', icon: PieChart },
-            { id: 'LEDGER', label: 'Transaction Ledger', icon: ArrowRightLeft },
+            { id: 'LEDGER', label: 'Ledger', icon: ArrowRightLeft },
         ].map((tab) => (
             <button 
                 key={tab.id}
@@ -240,50 +240,78 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
       <AnimatePresence mode="wait">
         
-        {/* ... (Overview tab remains unchanged) ... */}
         {activeTab === 'OVERVIEW' && (
             <Motion.div key="overview" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {accounts.map((acc) => (
                     <Motion.div 
                         key={acc.id}
                         whileHover={{ y: -2 }}
-                        className={`p-5 rounded-2xl border relative overflow-hidden group transition-all
-                        ${acc.type === 'CASH' ? 'bg-gradient-to-br from-lumina-surface to-amber-950/20 border-amber-500/20' : 
-                            acc.type === 'BANK' ? 'bg-gradient-to-br from-lumina-surface to-blue-950/20 border-blue-500/20' : 
-                            'bg-lumina-surface border-lumina-highlight'}`}
+                        className="p-5 rounded-2xl border bg-lumina-surface border-lumina-highlight relative overflow-hidden group transition-all"
                     >
                         <div className="flex justify-between items-center mb-4">
-                            <span className={`text-[10px] font-bold tracking-wider px-2 py-1 rounded border 
-                                ${acc.type === 'CASH' ? 'text-amber-400 border-amber-500/30 bg-amber-500/10' : 
-                                acc.type === 'BANK' ? 'text-blue-400 border-blue-500/30 bg-blue-500/10' : 
-                                'text-lumina-muted border-lumina-highlight'}`}>
+                            <span className={`text-[10px] font-bold tracking-wider px-2 py-1 rounded border uppercase 
+                                ${acc.type === 'CASH' ? 'text-amber-400 border-amber-500/30 bg-amber-500/10' : 'text-blue-400 border-blue-500/30 bg-blue-500/10'}`}>
                                 {(acc.type || 'BANK').replace('_', ' ')}
                             </span>
-                            <Wallet className="text-lumina-muted w-5 h-5 group-hover:text-white transition-colors" />
+                            <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                <button onClick={() => handleEditAccount(acc)} className="p-1 hover:bg-lumina-highlight rounded text-lumina-muted hover:text-white transition-colors" title="Edit Account">
+                                    <Edit2 size={14} />
+                                </button>
+                                <Wallet className="text-lumina-muted w-5 h-5" />
+                            </div>
                         </div>
                         <h3 className="text-lumina-muted text-sm">{acc.name}</h3>
                         <p className="text-2xl font-display font-bold text-white mt-1">
                             Rp {acc.balance.toLocaleString('id-ID')}
                         </p>
-                        <div className={`absolute bottom-0 left-0 w-full h-1 
-                            ${acc.type === 'CASH' ? 'bg-amber-500' : acc.type === 'BANK' ? 'bg-blue-500' : 'bg-lumina-highlight'}`} 
-                        />
+                        <p className="text-xs text-lumina-muted mt-1 font-mono">{acc.accountNumber}</p>
                     </Motion.div>
                     ))}
+                    
+                    {/* Add Account Button */}
+                    <button
+                        onClick={handleOpenAddAccount}
+                        className="p-5 rounded-2xl border border-dashed border-lumina-highlight hover:border-lumina-accent hover:bg-lumina-highlight/10 flex flex-col items-center justify-center transition-all group min-h-[160px]"
+                    >
+                        <div className="w-12 h-12 rounded-full bg-lumina-highlight/50 flex items-center justify-center mb-3 group-hover:bg-lumina-accent group-hover:text-lumina-base transition-colors">
+                            <Plus size={24} className="text-lumina-muted group-hover:text-lumina-base" />
+                        </div>
+                        <span className="text-sm font-bold text-lumina-muted group-hover:text-white">Add New Account</span>
+                    </button>
                 </div>
 
-                {/* Charts and stats omitted for brevity, same as original */}
+                <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6">
+                    <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2"><History size={18} className="text-lumina-accent"/> Cash Flow (Last 14 Days)</h3>
+                    <div className="h-64 w-full">
+                        <ResponsiveContainer width="100%" height="100%">
+                            <AreaChart data={cashFlowData}>
+                                <defs>
+                                    <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                                    </linearGradient>
+                                    <linearGradient id="colorExpense" x1="0" y1="0" x2="0" y2="1">
+                                        <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.3}/>
+                                        <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                                    </linearGradient>
+                                </defs>
+                                <CartesianGrid strokeDasharray="3 3" stroke="#333" vertical={false} />
+                                <XAxis dataKey="date" stroke="#666" fontSize={12} tickFormatter={(str) => new Date(str).getDate().toString()} />
+                                <YAxis stroke="#666" fontSize={12} tickFormatter={(val) => `${val/1000000}m`} />
+                                <Tooltip contentStyle={{ backgroundColor: '#1c1917', border: '1px solid #333', color: '#fff' }} />
+                                <Area type="monotone" dataKey="income" stroke="#10b981" fillOpacity={1} fill="url(#colorIncome)" strokeWidth={2} />
+                                <Area type="monotone" dataKey="expense" stroke="#f43f5e" fillOpacity={1} fill="url(#colorExpense)" strokeWidth={2} />
+                            </AreaChart>
+                        </ResponsiveContainer>
+                    </div>
+                </div>
             </Motion.div>
         )}
 
         {activeTab === 'INVOICES' && (
             <Motion.div key="invoices" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
                 <div className="flex justify-between items-center bg-lumina-surface border border-lumina-highlight p-4 rounded-xl">
-                    <div>
-                        <h2 className="text-xl font-bold text-white">Invoice Management</h2>
-                        <p className="text-sm text-lumina-muted">Track outstanding payments and paid history.</p>
-                    </div>
                     <div className="flex bg-lumina-base p-1 rounded-lg border border-lumina-highlight">
                         <button 
                             onClick={() => setInvoiceFilter('UNPAID')}
@@ -305,23 +333,31 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                         const { grandTotal, dueAmount } = getBookingFinancials(booking);
                         const percentagePaid = grandTotal > 0 ? (booking.paidAmount / grandTotal) * 100 : 100;
                         const isFullyPaid = dueAmount <= 100;
+                        const overdue = isOverdue(booking.date);
 
                         return (
-                            <div key={booking.id} className={`bg-lumina-surface border rounded-2xl p-6 relative overflow-hidden group hover:border-lumina-accent/50 transition-all
-                                ${isFullyPaid ? 'border-emerald-500/20' : 'border-lumina-highlight'}
+                            <div key={booking.id} className={`bg-lumina-surface border rounded-2xl p-6 relative overflow-hidden group transition-all
+                                ${isFullyPaid ? 'border-emerald-500/20' : overdue ? 'border-rose-500/30 shadow-rose-500/5' : 'border-lumina-highlight hover:border-lumina-accent/50'}
                             `}>
-                                <div className="absolute top-0 right-0 w-16 h-16 bg-lumina-accent/5 rounded-bl-full -mr-8 -mt-8"></div>
+                                {overdue && !isFullyPaid && (
+                                    <div className="absolute top-0 right-0 bg-rose-500 text-white text-[9px] font-bold px-2 py-1 rounded-bl-lg z-10">OVERDUE</div>
+                                )}
                                 
                                 <div className="flex justify-between items-start mb-4">
                                     <div>
                                         <h3 className="font-bold text-white text-lg">{booking.clientName}</h3>
-                                        <p className="text-xs text-lumina-muted">{booking.package}</p>
-                                        <p className="text-[10px] text-lumina-muted mt-0.5">{new Date(booking.date).toLocaleDateString()}</p>
+                                        <p className="text-xs text-lumina-muted">{booking.package} • {new Date(booking.date).toLocaleDateString()}</p>
                                     </div>
-                                    <div className={`px-2 py-1 rounded text-[10px] font-mono 
-                                        ${isFullyPaid ? 'bg-emerald-500/20 text-emerald-400' : 'bg-lumina-highlight text-lumina-muted'}`}>
-                                        #{booking.id.substring(0,6)}
-                                    </div>
+                                    {/* Quick Action for Unpaid: Full Settle */}
+                                    {!isFullyPaid && (
+                                        <button 
+                                            onClick={() => setSettleForm({ bookingId: booking.id, amount: dueAmount, maxAmount: dueAmount, currentPaidAmount: booking.paidAmount, accountId: accounts[0]?.id || '', mode: 'PAYMENT' })}
+                                            className="p-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 rounded-full border border-emerald-500/20 transition-colors"
+                                            title="Quick Settle (Full Amount)"
+                                        >
+                                            <CheckSquare size={16} />
+                                        </button>
+                                    )}
                                 </div>
 
                                 <div className="space-y-4">
@@ -335,7 +371,7 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                                         </div>
                                     </div>
 
-                                    <div className="flex justify-between items-center py-3 border-t border-b border-lumina-highlight/30">
+                                    <div className="flex justify-between items-center py-3 border-t border-lumina-highlight/30">
                                         <span className="text-sm text-lumina-muted">Balance Due</span>
                                         <span className={`text-xl font-mono font-bold ${isFullyPaid ? 'text-emerald-500' : 'text-rose-400'}`}>
                                             Rp {dueAmount.toLocaleString('id-ID')}
@@ -343,60 +379,101 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                                     </div>
 
                                     <div className="flex gap-2">
-                                        {!isFullyPaid ? (
-                                            <button 
-                                                onClick={() => setSettleForm({ bookingId: booking.id, amount: dueAmount, maxAmount: dueAmount, currentPaidAmount: booking.paidAmount, accountId: accounts[0]?.id || '' })}
-                                                className="flex-1 flex items-center justify-center gap-2 py-2 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 text-xs font-bold rounded-lg transition-colors border border-emerald-500/20"
-                                            >
-                                                <CheckSquare size={14} />
-                                                Settle
+                                        <div className="flex gap-2 flex-1">
+                                            <button onClick={() => setSelectedBookingForInvoice(booking)} className="flex-1 py-2 bg-lumina-base hover:bg-lumina-highlight text-white text-xs font-bold rounded-lg border border-lumina-highlight">
+                                                <FileInput size={14} className="inline mr-1"/> Invoice
                                             </button>
-                                        ) : (
-                                            // Refund Option for Paid Bookings
+                                            <button onClick={() => setSelectedBookingForWA(booking)} className="py-2 px-3 bg-lumina-highlight hover:bg-emerald-500/20 hover:text-emerald-400 text-white text-xs font-bold rounded-lg border border-lumina-highlight transition-colors">
+                                                <MessageCircle size={14} />
+                                            </button>
+                                        </div>
+                                        
+                                        {/* Secondary Menu for Refund / Partial */}
+                                        {isFullyPaid && (
                                             <button 
-                                                onClick={() => setSettleForm({ bookingId: booking.id, amount: -booking.paidAmount, maxAmount: 0, currentPaidAmount: booking.paidAmount, accountId: accounts[0]?.id || '' })}
-                                                className="flex-1 flex items-center justify-center gap-2 py-2 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 text-xs font-bold rounded-lg transition-colors border border-rose-500/20"
+                                                onClick={() => setSettleForm({ bookingId: booking.id, amount: 0, maxAmount: 0, currentPaidAmount: booking.paidAmount, accountId: accounts[0]?.id || '', mode: 'REFUND' })}
+                                                className="py-2 px-3 bg-rose-500/10 text-rose-400 border border-rose-500/20 rounded-lg hover:bg-rose-500/20 text-xs font-bold"
                                             >
-                                                <RotateCcw size={14} />
                                                 Refund
                                             </button>
                                         )}
-                                        <button 
-                                            onClick={() => setSelectedBookingForInvoice(booking)}
-                                            className="flex-1 flex items-center justify-center gap-2 py-2 bg-lumina-base hover:bg-lumina-highlight text-white text-xs font-bold rounded-lg transition-colors border border-lumina-highlight"
-                                        >
-                                            <FileInput size={14} />
-                                            {isFullyPaid ? 'Receipt' : 'Invoice'}
-                                        </button>
-                                        <button 
-                                            onClick={() => setSelectedBookingForWA(booking)}
-                                            className="w-10 flex items-center justify-center py-2 bg-lumina-highlight hover:bg-lumina-highlight/80 text-white text-xs font-bold rounded-lg transition-colors border border-lumina-highlight"
-                                        >
-                                            <MessageCircle size={14} />
-                                        </button>
                                     </div>
                                 </div>
                             </div>
                         )
                     })}
-                    {displayBookings.length === 0 && (
-                        <div className="col-span-full py-20 text-center text-lumina-muted border border-dashed border-lumina-highlight rounded-2xl">
-                            <CheckCircle className="w-12 h-12 mx-auto mb-4 text-lumina-highlight" />
-                            <p className="text-xl font-bold text-white">Nothing here</p>
-                            <p>No {invoiceFilter === 'UNPAID' ? 'outstanding' : 'paid'} invoices found.</p>
-                        </div>
-                    )}
                 </div>
             </Motion.div>
         )}
 
-        {/* ... (Expenses and Ledger tabs remain the same) ... */}
+        {activeTab === 'LEDGER' && (
+            <Motion.div key="ledger" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="bg-lumina-surface border border-lumina-highlight rounded-2xl overflow-hidden">
+                <table className="w-full text-left text-sm">
+                    <thead className="bg-lumina-base text-lumina-muted uppercase text-xs font-bold">
+                        <tr>
+                            <th className="p-4">Date</th>
+                            <th className="p-4">Description</th>
+                            <th className="p-4">Category</th>
+                            <th className="p-4">Account</th>
+                            <th className="p-4 text-right">Amount</th>
+                            <th className="p-4 text-center">Receipt</th>
+                            <th className="p-4"></th>
+                        </tr>
+                    </thead>
+                    <tbody className="divide-y divide-lumina-highlight/50">
+                        {transactions.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()).map(t => (
+                            <tr key={t.id} className="hover:bg-lumina-highlight/10 transition-colors group">
+                                <td className="p-4 font-mono text-xs text-lumina-muted">{new Date(t.date).toLocaleDateString()}</td>
+                                <td className="p-4 font-bold text-white">{t.description}</td>
+                                <td className="p-4">
+                                    <span className="px-2 py-1 rounded bg-lumina-highlight text-xs text-lumina-muted">{t.category}</span>
+                                </td>
+                                <td className="p-4 text-xs text-lumina-muted">
+                                    {accounts.find(a => a.id === t.accountId)?.name}
+                                </td>
+                                <td className={`p-4 text-right font-mono font-bold ${t.type === 'INCOME' ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                    {t.type === 'INCOME' ? '+' : '-'} Rp {t.amount.toLocaleString()}
+                                </td>
+                                <td className="p-4 text-center">
+                                    {t.receiptUrl ? (
+                                        <a href={t.receiptUrl} target="_blank" className="text-blue-400 hover:underline text-xs flex items-center justify-center gap-1">
+                                            <Paperclip size={12}/> View
+                                        </a>
+                                    ) : <span className="text-lumina-muted/30">-</span>}
+                                </td>
+                                <td className="p-4 text-right">
+                                    <button onClick={() => onDeleteTransaction && onDeleteTransaction(t.id)} className="text-lumina-muted hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <Trash2 size={14}/>
+                                    </button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </Motion.div>
+        )}
+
+        {/* EXPENSES TAB SAME AS BEFORE */}
+        {activeTab === 'EXPENSES' && (
+             <Motion.div key="expenses" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                 {/* Existing Pie Chart Logic */}
+                 <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6 flex justify-center">
+                    <PieChart width={400} height={400}>
+                        <Pie data={expenseBreakdown} cx="50%" cy="50%" innerRadius={60} outerRadius={100} paddingAngle={5} dataKey="value">
+                            {expenseBreakdown.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={entry.color} stroke="none" />
+                            ))}
+                        </Pie>
+                        <Tooltip />
+                    </PieChart>
+                 </div>
+             </Motion.div>
+        )}
         
       </AnimatePresence>
       </div>
 
-      {/* ... (Transfer and Expense Modals) ... */}
-      
+      {/* SETTLEMENT MODAL (Split Payment vs Refund) */}
       {settleForm.bookingId && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
             <Motion.div 
@@ -404,47 +481,43 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
               animate={{ scale: 1, opacity: 1 }}
               className="bg-lumina-surface border border-lumina-highlight w-full max-w-md rounded-2xl p-6 shadow-2xl"
             >
-               <h2 className="text-2xl font-display font-bold text-white mb-4 text-emerald-400">
-                   {settleForm.amount < 0 ? 'Process Refund' : 'Settle Balance'}
-               </h2>
-               <p className="text-sm text-lumina-muted mb-6">
-                   {settleForm.amount < 0 
-                        ? 'Issue a refund to the client. This will deduct from your account balance.' 
-                        : 'Receive final payment from client.'}
-               </p>
-
+               <div className="flex justify-between items-center mb-4">
+                   <h2 className={`text-2xl font-display font-bold ${settleForm.mode === 'REFUND' ? 'text-rose-500' : 'text-emerald-400'}`}>
+                       {settleForm.mode === 'REFUND' ? 'Process Refund' : 'Receive Payment'}
+                   </h2>
+                   <button onClick={() => setSettleForm({...settleForm, bookingId: null})}><RotateCcw size={18} className="text-lumina-muted"/></button>
+               </div>
+               
                <div className="space-y-4">
                     <div className="p-3 bg-lumina-base border border-lumina-highlight rounded-lg mb-4 flex justify-between items-center">
-                         <span className="text-xs text-lumina-muted font-bold uppercase">Total Paid So Far:</span>
+                         <span className="text-xs text-lumina-muted font-bold uppercase">Current Paid:</span>
                          <span className="font-mono font-bold text-white">Rp {settleForm.currentPaidAmount.toLocaleString('id-ID')}</span>
                     </div>
 
                     <div>
-                        <label className="text-xs uppercase tracking-wider text-lumina-muted mb-1 block">Amount (IDR)</label>
+                        <label className="text-xs uppercase tracking-wider text-lumina-muted mb-1 block">Amount (Positive Value)</label>
                          <div className="relative">
                            <span className="absolute left-3 top-3 text-lumina-muted font-bold">Rp</span>
                            <input 
                                 type="number" 
+                                min="0"
                                 value={settleForm.amount}
                                 onChange={e => setSettleForm({...settleForm, amount: Number(e.target.value)})}
                                 className={`w-full bg-lumina-base border rounded-lg p-3 pl-10 text-white font-mono focus:outline-none 
-                                    ${settleForm.amount < 0 ? 'border-rose-500/50 focus:border-rose-500' : 'border-lumina-highlight focus:border-lumina-accent'}
+                                    ${settleForm.mode === 'REFUND' ? 'border-rose-500/50 focus:border-rose-500' : 'border-emerald-500/50 focus:border-emerald-500'}
                                 `}
                            />
                         </div>
-                        {settleForm.amount > 0 && settleForm.amount > settleForm.maxAmount && (
+                        {settleForm.mode === 'PAYMENT' && settleForm.amount > settleForm.maxAmount && (
                             <p className="text-[10px] text-rose-500 mt-1">Amount exceeds remaining balance.</p>
                         )}
-                        {settleForm.amount < 0 && Math.abs(settleForm.amount) > settleForm.currentPaidAmount && (
-                            <p className="text-[10px] text-rose-500 mt-1">Refund exceeds total paid amount (Max: Rp {settleForm.currentPaidAmount.toLocaleString()}).</p>
-                        )}
-                        {settleForm.amount < 0 && (
-                            <p className="text-[10px] text-amber-400 mt-1 flex items-center gap-1"><RotateCcw size={10}/> Warning: Negative amount will be processed as REFUND.</p>
+                        {settleForm.mode === 'REFUND' && settleForm.amount > settleForm.currentPaidAmount && (
+                            <p className="text-[10px] text-rose-500 mt-1">Cannot refund more than paid amount.</p>
                         )}
                     </div>
                     <div>
                         <label className="text-xs uppercase tracking-wider text-lumina-muted mb-1 block">
-                            {settleForm.amount < 0 ? 'Refund From Account' : 'Deposit To Account'}
+                            {settleForm.mode === 'REFUND' ? 'Refund From Account' : 'Deposit To Account'}
                         </label>
                         <select 
                             value={settleForm.accountId}
@@ -457,24 +530,133 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                </div>
 
                <div className="grid grid-cols-2 gap-3 mt-8">
-                  <button onClick={() => setSettleForm({bookingId: null, amount: 0, maxAmount: 0, currentPaidAmount: 0, accountId: ''})} className="py-3 text-lumina-muted font-bold hover:text-white transition-colors">CANCEL</button>
+                  <button onClick={() => setSettleForm({...settleForm, bookingId: null})} className="py-3 text-lumina-muted font-bold hover:text-white transition-colors">CANCEL</button>
                   <button 
                     onClick={handleSettleSubmit} 
-                    disabled={
-                        (settleForm.amount > 0 && settleForm.amount > settleForm.maxAmount) || 
-                        (settleForm.amount < 0 && Math.abs(settleForm.amount) > settleForm.currentPaidAmount) ||
-                        settleForm.amount === 0
-                    }
-                    className={`py-3 text-white rounded-xl font-bold transition-colors disabled:opacity-50 disabled:cursor-not-allowed
-                        ${settleForm.amount < 0 ? 'bg-rose-500 hover:bg-rose-600' : 'bg-emerald-500 hover:bg-emerald-600'}
+                    className={`py-3 text-white rounded-xl font-bold transition-colors shadow-lg
+                        ${settleForm.mode === 'REFUND' ? 'bg-rose-500 hover:bg-rose-600 shadow-rose-500/20' : 'bg-emerald-500 hover:bg-emerald-600 shadow-emerald-500/20'}
                     `}
                   >
-                      {settleForm.amount < 0 ? 'CONFIRM REFUND' : 'CONFIRM PAYMENT'}
+                      CONFIRM
                   </button>
                </div>
             </Motion.div>
           </div>
       )}
+
+      {/* EXPENSE MODAL (Updated) */}
+      {showExpenseModal && (
+          <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+              <Motion.div initial={{scale:0.95}} animate={{scale:1}} className="bg-lumina-surface border border-lumina-highlight w-full max-w-md rounded-2xl p-6 shadow-2xl">
+                  <h2 className="text-xl font-bold text-white mb-4">Record Expense</h2>
+                  <div className="space-y-4">
+                      <input className="w-full bg-lumina-base border border-lumina-highlight rounded-lg p-3 text-white" placeholder="Description (e.g. Electricity Bill)" value={expenseForm.description} onChange={e => setExpenseForm({...expenseForm, description: e.target.value})} />
+                      <div className="grid grid-cols-2 gap-4">
+                          <input type="number" className="bg-lumina-base border border-lumina-highlight rounded-lg p-3 text-white" placeholder="Amount" value={expenseForm.amount} onChange={e => setExpenseForm({...expenseForm, amount: e.target.value})} />
+                          <select className="bg-lumina-base border border-lumina-highlight rounded-lg p-3 text-white" value={expenseForm.category} onChange={e => setExpenseForm({...expenseForm, category: e.target.value})}>
+                              <option>Utilities & Rent</option>
+                              <option>Equipment Maint.</option>
+                              <option>Marketing / Ads</option>
+                              <option>Staff Salaries</option>
+                              <option>Consumables</option>
+                              <option>Other</option>
+                          </select>
+                      </div>
+                      
+                      {/* New Features */}
+                      <div className="flex items-center justify-between p-3 bg-lumina-base rounded-lg border border-lumina-highlight">
+                          <label className="flex items-center gap-2 text-sm text-white cursor-pointer">
+                              <input type="checkbox" checked={expenseForm.isRecurring} onChange={e => setExpenseForm({...expenseForm, isRecurring: e.target.checked})} className="rounded bg-lumina-surface border-lumina-highlight text-lumina-accent"/>
+                              <span>Recurring Monthly</span>
+                          </label>
+                          <Repeat size={16} className="text-lumina-muted"/>
+                      </div>
+
+                      <div className="p-3 bg-lumina-base rounded-lg border border-dashed border-lumina-highlight flex items-center justify-center cursor-pointer hover:border-lumina-accent transition-colors">
+                          <div className="text-center">
+                              <Upload size={20} className="mx-auto text-lumina-muted mb-1"/>
+                              <p className="text-xs text-lumina-muted">Upload Receipt (Simulation)</p>
+                          </div>
+                      </div>
+
+                      <div className="flex gap-3 mt-6">
+                          <button onClick={() => setShowExpenseModal(false)} className="flex-1 py-3 text-lumina-muted font-bold">Cancel</button>
+                          <button onClick={handleExpenseSubmit} className="flex-1 py-3 bg-rose-500 text-white font-bold rounded-xl hover:bg-rose-600">Save Expense</button>
+                      </div>
+                  </div>
+              </Motion.div>
+          </div>
+      )}
+
+      {/* MANAGE ACCOUNT MODAL */}
+      <AnimatePresence>
+          {showAccountModal && (
+              <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
+                  <Motion.div 
+                    initial={{scale:0.95, opacity:0}} 
+                    animate={{scale:1, opacity:1}} 
+                    exit={{scale:0.95, opacity:0}}
+                    className="bg-lumina-surface border border-lumina-highlight w-full max-w-md rounded-2xl p-6 shadow-2xl relative"
+                  >
+                      <div className="flex justify-between items-center mb-6">
+                          <h2 className="text-xl font-bold text-white">{editingAccount ? 'Edit Account' : 'Add New Account'}</h2>
+                          <button onClick={() => setShowAccountModal(false)} className="text-lumina-muted hover:text-white"><X size={20}/></button>
+                      </div>
+                      
+                      <div className="space-y-4">
+                          <div>
+                              <label className="text-xs text-lumina-muted uppercase font-bold block mb-1">Account Name</label>
+                              <input 
+                                  className="w-full bg-lumina-base border border-lumina-highlight rounded-lg p-3 text-white focus:border-lumina-accent outline-none"
+                                  placeholder="e.g. BCA Main"
+                                  value={accountForm.name}
+                                  onChange={e => setAccountForm({...accountForm, name: e.target.value})}
+                              />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                  <label className="text-xs text-lumina-muted uppercase font-bold block mb-1">Type</label>
+                                  <select 
+                                      className="w-full bg-lumina-base border border-lumina-highlight rounded-lg p-3 text-white focus:border-lumina-accent outline-none"
+                                      value={accountForm.type}
+                                      onChange={e => setAccountForm({...accountForm, type: e.target.value as any})}
+                                  >
+                                      <option value="BANK">Bank</option>
+                                      <option value="CASH">Cash</option>
+                                      <option value="PETTY_CASH">Petty Cash</option>
+                                  </select>
+                              </div>
+                              <div>
+                                  <label className="text-xs text-lumina-muted uppercase font-bold block mb-1">Initial/Current Balance</label>
+                                  <input 
+                                      type="number"
+                                      className="w-full bg-lumina-base border border-lumina-highlight rounded-lg p-3 text-white focus:border-lumina-accent outline-none"
+                                      value={accountForm.balance}
+                                      onChange={e => setAccountForm({...accountForm, balance: Number(e.target.value)})}
+                                  />
+                              </div>
+                          </div>
+                          <div>
+                              <label className="text-xs text-lumina-muted uppercase font-bold block mb-1">Account Number (Optional)</label>
+                              <input 
+                                  className="w-full bg-lumina-base border border-lumina-highlight rounded-lg p-3 text-white focus:border-lumina-accent outline-none"
+                                  placeholder="e.g. 123-456-789"
+                                  value={accountForm.accountNumber || ''}
+                                  onChange={e => setAccountForm({...accountForm, accountNumber: e.target.value})}
+                              />
+                          </div>
+                          
+                          <button 
+                              onClick={handleAccountSubmit}
+                              className="w-full py-3 bg-lumina-accent text-lumina-base font-bold rounded-xl hover:bg-lumina-accent/90 transition-colors mt-4 shadow-lg shadow-lumina-accent/10"
+                          >
+                              {editingAccount ? 'Update Account' : 'Create Account'}
+                          </button>
+                      </div>
+                  </Motion.div>
+              </div>
+          )}
+      </AnimatePresence>
 
       <InvoiceModal 
         isOpen={!!selectedBookingForInvoice}

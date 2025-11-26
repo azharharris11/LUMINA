@@ -1,8 +1,11 @@
 
+
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Booking, ProjectStatus, User, BookingFile, StudioConfig, Package, BookingItem, BookingTask, ActivityLog, Asset, BookingComment, Discount, TimeLog, Transaction, Account } from '../types';
-import { X, Image as ImageIcon, FileSignature, Clock, CheckCircle2, Circle, Upload, PenTool, Download, Calendar, Save, Trash2, Edit, Plus, Loader2, FileText, ExternalLink, Paperclip, Check, Send, RefreshCw, AlertCircle, Lock, Timer, ListChecks, History, DollarSign, User as UserIcon, MapPin, Briefcase, Camera, Box, Wrench, AlertTriangle, TrendingUp, Tag, MessageSquare, Play, Square, Pause, PieChart, MinusCircle, ChevronRight, HardDrive, LayoutDashboard, FolderOpen, Palette, ArrowLeft, Folder, MoreVertical, FolderPlus } from 'lucide-react';
+import { X, Image as ImageIcon, FileSignature, Clock, CheckCircle2, Circle, Upload, PenTool, Download, Calendar, Save, Trash2, Edit, Plus, Loader2, FileText, ExternalLink, Paperclip, Check, Send, RefreshCw, AlertCircle, Lock, Timer, ListChecks, History, DollarSign, User as UserIcon, MapPin, Briefcase, Camera, Box, Wrench, AlertTriangle, TrendingUp, Tag, MessageSquare, Play, Square, Pause, PieChart, MinusCircle, ChevronRight, HardDrive, LayoutDashboard, FolderOpen, Palette, ArrowLeft, Folder, MoreVertical, FolderPlus, Eye, MessageCircle, Copy } from 'lucide-react';
+import WhatsAppModal from './WhatsAppModal'; // Need to import to use logic or simulate
 
 interface ProjectDrawerProps {
   isOpen: boolean;
@@ -21,9 +24,10 @@ interface ProjectDrawerProps {
   onAddTransaction?: (data: { description: string; amount: number; category: string; accountId: string; bookingId?: string }) => void;
   accounts?: Account[];
   googleToken?: string | null;
+  onLogActivity?: (bookingId: string, action: string, details: string) => void;
 }
 
-type Tab = 'OVERVIEW' | 'TASKS' | 'MOODBOARD' | 'CONTRACT' | 'TIMELINE' | 'LOGS' | 'DISCUSSION' | 'PROFITABILITY';
+type Tab = 'OVERVIEW' | 'TASKS' | 'MOODBOARD' | 'TIMELINE' | 'LOGS' | 'PROFITABILITY' | 'PROOFING';
 
 const Motion = motion as any;
 
@@ -32,7 +36,7 @@ interface DriveFolder {
     name: string;
 }
 
-const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking, photographer, onUpdateBooking, onDeleteBooking, bookings = [], config, packages = [], currentUser, assets = [], users = [], transactions = [], onAddTransaction, accounts = [], googleToken }) => {
+const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking, photographer, onUpdateBooking, onDeleteBooking, bookings = [], config, packages = [], currentUser, assets = [], users = [], transactions = [], onAddTransaction, accounts = [], googleToken, onLogActivity }) => {
   const [activeTab, setActiveTab] = useState<Tab>('OVERVIEW');
   
   const [isLogisticsEditing, setIsLogisticsEditing] = useState(false);
@@ -73,6 +77,9 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const [revenueWarning, setRevenueWarning] = useState<string | null>(null);
   const [showOvertimePrompt, setShowOvertimePrompt] = useState(false); 
+  
+  // WhatsApp Prompt State
+  const [showWhatsAppPrompt, setShowWhatsAppPrompt] = useState(false);
 
   const [activeTimerStart, setActiveTimerStart] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -109,6 +116,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       setRescheduleError(null);
       setRevenueWarning(null);
       setShowOvertimePrompt(false);
+      setShowWhatsAppPrompt(false);
       setEditDiscount(booking.discount || { type: 'FIXED', value: 0 });
       setNewExpense({ description: '', amount: 0, category: 'Production Cost', accountId: accounts[0]?.id || '' });
       
@@ -287,8 +295,17 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
               }));
               // Log Automation
               const autoLog = createLocalLog('AUTOMATION', `Generated ${newTasks.length} tasks for ${status}`);
-              // Notify (Console for now, but ideally this pushes to the notifications stack)
-              console.log(`[System] Workflow Automation Triggered: ${status}`);
+          }
+
+          // 3. Trigger Prompts based on Status
+          if (status === 'CULLING') {
+              setRevenueWarning("Tip: Did the shoot run late? Check if Overtime Fee is needed.");
+              setShowOvertimePrompt(true);
+          } else if (status === 'COMPLETED') {
+              setShowWhatsAppPrompt(true);
+          } else {
+              setShowOvertimePrompt(false);
+              setShowWhatsAppPrompt(false);
           }
 
           onUpdateBooking({ 
@@ -358,6 +375,25 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
+  // Quick Actions
+  const handleQuickWhatsApp = () => {
+      // Open WhatsApp Modal Trigger - Since modal is sibling, we need a way to trigger it. 
+      // For this architecture, we'll simulate opening by alerting user to use the main button or trigger prop if available.
+      // Actually, better to just open the link directly for now.
+      const msg = `Hi ${booking?.clientName}, just checking in on your project!`;
+      const phone = booking?.clientPhone.replace(/\D/g, '') || '';
+      const url = `https://wa.me/${phone.startsWith('0') ? '62'+phone.slice(1) : phone}?text=${encodeURIComponent(msg)}`;
+      window.open(url, '_blank');
+      if(booking && onLogActivity) onLogActivity(booking.id, 'COMMUNICATION', 'Sent Quick WhatsApp');
+  };
+
+  const handleCopyPortalLink = () => {
+      // Simulate Client Portal Link
+      const link = `${window.location.origin}/portal/${booking?.id}`;
+      navigator.clipboard.writeText(link);
+      alert("Client Portal Link Copied to Clipboard!");
+  };
+
   if (!isOpen || !booking) return null;
 
   return (
@@ -414,6 +450,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 { id: 'OVERVIEW', icon: LayoutDashboard, label: 'Overview' },
                 { id: 'TASKS', icon: ListChecks, label: 'Tasks' },
                 { id: 'TIMELINE', icon: HardDrive, label: 'Files & Delivery' },
+                { id: 'PROOFING', icon: Eye, label: 'Client Proofing' },
                 { id: 'MOODBOARD', icon: Palette, label: 'Moodboard' },
                 { id: 'LOGS', icon: History, label: 'Activity' },
                 { id: 'PROFITABILITY', icon: PieChart, label: 'Financials' }
@@ -431,7 +468,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
         </div>
 
         {/* CONTENT */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-lumina-base/50 p-6">
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-lumina-base/50 p-6 pb-24"> {/* Added padding-bottom for sticky footer */}
             
             {activeTab === 'OVERVIEW' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -498,8 +535,26 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                     <p className="font-bold flex items-center gap-2"><AlertTriangle size={12}/> Overtime Detected</p>
                                     <p>{revenueWarning}</p>
                                 </div>
-                                <button className="text-xs font-bold bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded hover:bg-amber-500 hover:text-black transition-colors">
+                                <button 
+                                    onClick={() => setActiveTab('PROFITABILITY')}
+                                    className="text-xs font-bold bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded hover:bg-amber-500 hover:text-black transition-colors"
+                                >
                                     Add Charge
+                                </button>
+                            </Motion.div>
+                        )}
+
+                        {showWhatsAppPrompt && (
+                            <Motion.div initial={{opacity:0}} animate={{opacity:1}} className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex justify-between items-center">
+                                <div className="text-emerald-200 text-xs">
+                                    <p className="font-bold flex items-center gap-2"><MessageCircle size={12}/> Job Completed</p>
+                                    <p>Send Thank You message & Delivery Link?</p>
+                                </div>
+                                <button 
+                                    onClick={handleQuickWhatsApp}
+                                    className="text-xs font-bold bg-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded hover:bg-emerald-500 hover:text-black transition-colors"
+                                >
+                                    Send WA
                                 </button>
                             </Motion.div>
                         )}
@@ -536,6 +591,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 </div>
             )}
 
+            {/* ... (TASKS, TIMELINE, PROOFING, LOGS tabs remain same) ... */}
             {activeTab === 'TASKS' && (
                 <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6 max-w-3xl mx-auto">
                     <div className="flex gap-2 mb-6">
@@ -645,6 +701,60 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                             </div>
                         </div>
                     </div>
+                </div>
+            )}
+
+            {activeTab === 'PROOFING' && (
+                <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6">
+                    <div className="flex justify-between items-center mb-6">
+                        <h3 className="font-bold text-white flex items-center gap-2"><Eye size={18} className="text-lumina-accent"/> Client Proofing Portal</h3>
+                        <div className="text-xs text-lumina-muted font-mono">0 Selected</div>
+                    </div>
+                    
+                    <div className="p-8 text-center border border-dashed border-lumina-highlight rounded-xl bg-lumina-base/20 mb-6">
+                        <p className="text-sm text-lumina-muted mb-2">Client Selection View (Simulation)</p>
+                        <p className="text-xs text-lumina-muted/50">This is where clients would select their favorite photos.</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                        {[1,2,3,4].map(i => (
+                            <div key={i} className="aspect-square bg-lumina-base border border-lumina-highlight rounded-lg flex items-center justify-center relative group hover:border-lumina-accent transition-colors">
+                                <ImageIcon className="text-lumina-muted/20 w-8 h-8" />
+                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    <button className="w-6 h-6 rounded-full bg-black/50 border border-white/20 flex items-center justify-center hover:bg-lumina-accent hover:text-black">
+                                        <Plus size={12} />
+                                    </button>
+                                </div>
+                                <div className="absolute bottom-2 left-2 right-2 text-center">
+                                    <span className="text-[10px] bg-black/50 px-1 rounded text-white">IMG_00{i}.jpg</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'LOGS' && (
+                <div className="space-y-4">
+                    {(booking.logs || []).map((log) => (
+                        <div key={log.id} className="flex gap-3 p-3 border-b border-lumina-highlight/50 last:border-0">
+                            <div className="mt-1">
+                                {log.action === 'COMMUNICATION' ? (
+                                    <MessageCircle size={14} className="text-emerald-400" />
+                                ) : log.action === 'STATUS_CHANGE' ? (
+                                    <RefreshCw size={14} className="text-blue-400" />
+                                ) : (
+                                    <Circle size={8} className="text-lumina-muted fill-lumina-muted" />
+                                )}
+                            </div>
+                            <div>
+                                <p className="text-xs text-white font-bold">{log.action.replace('_', ' ')}</p>
+                                <p className="text-xs text-lumina-muted">{log.details}</p>
+                                <p className="text-[10px] text-lumina-muted/50 mt-1">{new Date(log.timestamp).toLocaleString()} by {log.userName}</p>
+                            </div>
+                        </div>
+                    ))}
+                    {(booking.logs || []).length === 0 && <p className="text-center text-lumina-muted text-xs py-4">No activity recorded.</p>}
                 </div>
             )}
 
@@ -846,6 +956,22 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 )}
             </AnimatePresence>
 
+        </div>
+
+        {/* STICKY QUICK ACTIONS FOOTER */}
+        <div className="border-t border-lumina-highlight bg-lumina-base p-4 flex justify-between items-center">
+            <div className="text-[10px] text-lumina-muted uppercase tracking-wider">Quick Actions</div>
+            <div className="flex gap-2">
+                <button onClick={() => setActiveTab('TIMELINE')} className="flex items-center gap-2 px-4 py-2 bg-lumina-surface border border-lumina-highlight rounded-xl hover:bg-lumina-highlight text-white text-xs font-bold transition-colors">
+                    <Upload size={14}/> Upload
+                </button>
+                <button onClick={handleQuickWhatsApp} className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl hover:bg-emerald-500 hover:text-white text-emerald-400 text-xs font-bold transition-colors">
+                    <MessageCircle size={14}/> WhatsApp
+                </button>
+                <button onClick={handleCopyPortalLink} className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl hover:bg-blue-500 hover:text-white text-blue-400 text-xs font-bold transition-colors">
+                    <Copy size={14}/> Copy Portal Link
+                </button>
+            </div>
         </div>
       </Motion.div>
     </div>

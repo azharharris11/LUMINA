@@ -2,18 +2,11 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { X, Send, MessageCircle, Copy, Check } from 'lucide-react';
-import { Booking, StudioConfig } from '../types';
+import { Booking, StudioConfig, WhatsAppModalProps } from '../types'; // Update type import
 
 const Motion = motion as any;
 
-interface WhatsAppModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  booking: Booking | null;
-  config: StudioConfig;
-}
-
-const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ isOpen, onClose, booking, config }) => {
+const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ isOpen, onClose, booking, config, onLogActivity }) => {
   if (!isOpen || !booking) return null;
 
   const [activeTemplate, setActiveTemplate] = useState<'booking' | 'reminder' | 'thanks'>('reminder');
@@ -54,6 +47,11 @@ const WhatsAppModal: React.FC<WhatsAppModalProps> = ({ isOpen, onClose, booking,
   };
 
   const handleSend = () => {
+    // Log Activity
+    if (onLogActivity) {
+        onLogActivity(booking.id, 'COMMUNICATION', `Sent WhatsApp ${activeTemplate} message to client.`);
+    }
+
     // Format Phone: Replace 08 with 628, remove non-digits
     let phone = booking.clientPhone.replace(/\D/g, '');
     if (phone.startsWith('0')) {

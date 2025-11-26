@@ -1,7 +1,10 @@
-import React from 'react';
+
+import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { X, Printer, Download, Aperture } from 'lucide-react';
+import { X, Printer, Download, Aperture, Loader2 } from 'lucide-react';
 import { Booking, StudioConfig } from '../types';
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
 const Motion = motion as any;
 
@@ -13,6 +16,8 @@ interface InvoiceModalProps {
 }
 
 const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, booking, config }) => {
+  const [isGeneratingPDF, setIsGeneratingPDF] = useState(false);
+
   if (!isOpen || !booking) return null;
 
   // Determine Tax Rate: Use Snapshot if available, else fallback to current global config
@@ -59,6 +64,33 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, booking, c
     ? new Date(booking.contractSignedDate).toLocaleDateString() 
     : new Date(booking.date).toLocaleDateString();
 
+  const handleDownloadPDF = async () => {
+      setIsGeneratingPDF(true);
+      try {
+          const element = document.getElementById('invoice-content');
+          if (!element) return;
+
+          const canvas = await html2canvas(element, {
+              scale: 2,
+              logging: false,
+              useCORS: true
+          });
+
+          const imgData = canvas.toDataURL('image/png');
+          const pdf = new jsPDF('p', 'mm', 'a4');
+          const pdfWidth = pdf.internal.pageSize.getWidth();
+          const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+
+          pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+          pdf.save(`${generateInvoiceId()}.pdf`);
+      } catch (error) {
+          console.error("PDF Generation Error:", error);
+          alert("Failed to generate PDF. Please try again.");
+      } finally {
+          setIsGeneratingPDF(false);
+      }
+  };
+
   return (
     <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 print:p-0">
       {/* Print Styles */}
@@ -96,8 +128,12 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, booking, c
                 <button onClick={() => window.print()} className="flex items-center gap-2 px-4 py-2 bg-lumina-surface border border-lumina-highlight rounded-lg hover:bg-lumina-highlight transition-colors text-sm">
                     <Printer size={16} /> Print
                 </button>
-                <button className="flex items-center gap-2 px-4 py-2 bg-lumina-accent text-lumina-base rounded-lg font-bold hover:bg-lumina-accent/90 transition-colors text-sm">
-                    <Download size={16} /> Download PDF
+                <button 
+                    onClick={handleDownloadPDF}
+                    disabled={isGeneratingPDF}
+                    className="flex items-center gap-2 px-4 py-2 bg-lumina-accent text-lumina-base rounded-lg font-bold hover:bg-lumina-accent/90 transition-colors text-sm disabled:opacity-50"
+                >
+                    {isGeneratingPDF ? <Loader2 size={16} className="animate-spin"/> : <Download size={16} />} Download PDF
                 </button>
                 <button onClick={onClose} className="p-2 hover:bg-white/10 rounded-lg ml-2">
                     <X size={20} />
@@ -105,7 +141,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, booking, c
             </div>
         </div>
 
-        <div className="flex-1 bg-white text-stone-900 rounded-lg shadow-2xl overflow-y-auto custom-scrollbar relative font-sans print:overflow-visible print:rounded-none">
+        <div id="invoice-content" className="flex-1 bg-white text-stone-900 rounded-lg shadow-2xl overflow-y-auto custom-scrollbar relative font-sans print:overflow-visible print:rounded-none">
             <div className="p-12 min-h-full flex flex-col justify-between print:p-0">
                 
                 <div>

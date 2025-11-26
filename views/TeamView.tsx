@@ -1,5 +1,4 @@
 
-
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Booking, Role, TeamViewProps, PackageCostItem } from '../types';
@@ -7,7 +6,7 @@ import { Mail, Phone, Calendar, Briefcase, Award, Circle, Plus, X, Trash2, Edit2
 
 const Motion = motion as any;
 
-const TeamView: React.FC<TeamViewProps> = ({ users, bookings, onAddUser, onUpdateUser, onDeleteUser }) => {
+const TeamView: React.FC<TeamViewProps> = ({ users, bookings, onAddUser, onUpdateUser, onDeleteUser, onRecordExpense }) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
   const [viewScheduleUser, setViewScheduleUser] = useState<User | null>(null);
@@ -69,6 +68,27 @@ const TeamView: React.FC<TeamViewProps> = ({ users, bookings, onAddUser, onUpdat
       
       const netRevenue = getRevenueGenerated(user);
       return netRevenue * (user.commissionRate / 100);
+  };
+
+  const handlePayout = (user: User) => {
+      const amount = getEstimatedCommission(user);
+      if (amount <= 0) {
+          alert("No estimated commission to pay out.");
+          return;
+      }
+
+      if (window.confirm(`Process payout of Rp ${amount.toLocaleString()} for ${user.name}?\n\nThis will record an expense in Finance.`)) {
+          if (onRecordExpense) {
+              onRecordExpense({
+                  description: `Commission Payout - ${user.name}`,
+                  amount: amount,
+                  category: 'Staff Salaries',
+                  accountId: 'acc1', // Default to main account, needs proper selection ideally
+                  submittedBy: 'admin'
+              });
+              alert("Payout recorded as an expense.");
+          }
+      }
   };
 
   const openAddModal = () => {
@@ -247,9 +267,18 @@ const TeamView: React.FC<TeamViewProps> = ({ users, bookings, onAddUser, onUpdat
                                  <Coins size={12} className="text-amber-400" />
                                  <span>Est. Commission ({user.commissionRate}%)</span>
                              </div>
-                             <span className="text-sm font-mono font-bold text-amber-400">
-                                 Rp {getEstimatedCommission(user).toLocaleString('id-ID', { notation: "compact" })}
-                             </span>
+                             <div className="flex items-center gap-2">
+                                 <span className="text-sm font-mono font-bold text-amber-400">
+                                     Rp {getEstimatedCommission(user).toLocaleString('id-ID', { notation: "compact" })}
+                                 </span>
+                                 <button 
+                                    onClick={() => handlePayout(user)}
+                                    className="px-2 py-0.5 text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/50 rounded hover:bg-emerald-500 hover:text-black transition-colors"
+                                    title="Record Payout as Expense"
+                                 >
+                                     PAYOUT
+                                 </button>
+                             </div>
                          </div>
                     </div>
                 )}

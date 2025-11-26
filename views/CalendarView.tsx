@@ -1,4 +1,3 @@
-
 import React, { useEffect, useState } from 'react';
 import { Booking, User, StudioRoom } from '../types';
 import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Grid } from 'lucide-react';
@@ -203,6 +202,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ bookings, currentDate, user
                                       <div key={hour} className="h-32 border-b border-lumina-highlight/20"></div>
                                   ))}
                                   {dayBookings.map(b => {
+                                      if (!b.timeStart) return null;
                                       const [h, m] = b.timeStart.split(':').map(Number);
                                       const top = (h - 9) * 128 + (m / 60) * 128;
                                       const height = b.duration * 128;
@@ -295,6 +295,7 @@ const CalendarView: React.FC<CalendarViewProps> = ({ bookings, currentDate, user
 
                         {/* Bookings Layer */}
                         {studioBookings.map(booking => {
+                        if (!booking.timeStart) return null;
                         const startHour = parseInt(booking.timeStart.split(':')[0]);
                         const startMinute = parseInt(booking.timeStart.split(':')[1]);
                         

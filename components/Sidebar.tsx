@@ -21,7 +21,7 @@ import { motion } from 'framer-motion';
 
 const Motion = motion as any;
 
-const Sidebar: React.FC<SidebarProps> = ({ currentUser, onNavigate, currentView, onLogout, onSwitchApp, isDarkMode, onToggleTheme }) => {
+const Sidebar: React.FC<SidebarProps> = ({ currentUser, onNavigate, currentView, onLogout, onSwitchApp, isDarkMode, onToggleTheme, bookings }) => {
   const menuItems = [
     { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard, roles: ['OWNER', 'ADMIN', 'PHOTOGRAPHER', 'EDITOR', 'FINANCE'] },
     { id: 'calendar', label: 'Schedule', icon: CalendarDays, roles: ['OWNER', 'ADMIN', 'PHOTOGRAPHER'] },
@@ -35,6 +35,27 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, onNavigate, currentView,
   ];
 
   const filteredMenu = menuItems.filter(item => item.roles.includes(currentUser.role));
+
+  // Calculate Badges
+  const getBadgeCount = (viewId: string) => {
+      if (!bookings) return 0;
+      
+      if (viewId === 'production' || viewId === 'dashboard') {
+          // Photographers see badge if they have 'SHOOTING' tasks
+          if (currentUser.role === 'PHOTOGRAPHER') {
+              return bookings.filter(b => b.photographerId === currentUser.id && b.status === 'SHOOTING').length;
+          }
+          // Editors see badge if they have 'EDITING' tasks
+          if (currentUser.role === 'EDITOR') {
+              return bookings.filter(b => b.editorId === currentUser.id && b.status === 'EDITING').length;
+          }
+          // Admins/Owners see badge for 'REVIEW' tasks
+          if (currentUser.role === 'OWNER' || currentUser.role === 'ADMIN') {
+              return bookings.filter(b => b.status === 'REVIEW').length;
+          }
+      }
+      return 0;
+  };
 
   return (
     <Motion.aside 
@@ -62,7 +83,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, onNavigate, currentView,
         </div>
 
         <nav className="mt-8 px-2 lg:px-4 space-y-2 max-h-[calc(100vh-200px)] overflow-y-auto custom-scrollbar">
-          {filteredMenu.map((item) => (
+          {filteredMenu.map((item) => {
+            const badgeCount = getBadgeCount(item.id);
+            
+            return (
             <button
               key={item.id}
               onClick={() => onNavigate(item.id)}
@@ -72,7 +96,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, onNavigate, currentView,
                   : 'text-lumina-muted hover:text-lumina-text hover:bg-lumina-highlight/30'
                 }`}
             >
-              <item.icon className={`w-5 h-5 ${currentView === item.id ? 'stroke-[2.5px]' : 'stroke-2'}`} />
+              <div className="relative">
+                  <item.icon className={`w-5 h-5 ${currentView === item.id ? 'stroke-[2.5px]' : 'stroke-2'}`} />
+                  {badgeCount > 0 && (
+                      <span className="absolute -top-2 -right-2 min-w-[16px] h-4 flex items-center justify-center bg-red-500 text-white text-[9px] font-bold rounded-full px-1 border-2 border-lumina-surface">
+                          {badgeCount > 9 ? '9+' : badgeCount}
+                      </span>
+                  )}
+              </div>
               <span className="hidden lg:block ml-3 font-medium tracking-wide text-sm">{item.label}</span>
               {currentView === item.id && (
                 <Motion.div 
@@ -81,7 +112,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, onNavigate, currentView,
                 />
               )}
             </button>
-          ))}
+          )})}
         </nav>
       </div>
 

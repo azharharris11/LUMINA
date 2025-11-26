@@ -1,22 +1,11 @@
-
 import React from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, Users, Image as ImageIcon, Clock, AlertCircle, ArrowRight } from 'lucide-react';
-import { User, Booking, Transaction, StudioConfig } from '../types';
+import { TrendingUp, Users, Image as ImageIcon, Clock, AlertCircle, ArrowRight, Camera, MessageCircle, CheckSquare } from 'lucide-react';
+import { DashboardProps } from '../types';
 
 const Motion = motion as any;
 
-interface DashboardProps {
-  user: User;
-  bookings: Booking[];
-  transactions?: Transaction[];
-  onSelectBooking: (bookingId: string) => void; 
-  selectedDate: string; 
-  onNavigate: (view: string) => void;
-  config?: StudioConfig;
-}
-
-const DashboardView: React.FC<DashboardProps> = ({ user, bookings, transactions = [], onSelectBooking, selectedDate, onNavigate, config }) => {
+const DashboardView: React.FC<DashboardProps> = ({ user, bookings, transactions = [], onSelectBooking, selectedDate, onNavigate, config, onOpenWhatsApp }) => {
   const containerVariants = {
     hidden: { opacity: 0 },
     visible: { 
@@ -55,7 +44,6 @@ const DashboardView: React.FC<DashboardProps> = ({ user, bookings, transactions 
   const utilizationRate = Math.round((hoursBookedToday / TOTAL_CAPACITY_HOURS) * 100);
 
   // Smart Action Items Logic
-  // LOGIC FIX: Check against Grand Total (inc. Tax)
   const taxRate = config?.taxRate || 0;
   
   const unpaidBookings = bookings.filter(b => {
@@ -74,6 +62,7 @@ const DashboardView: React.FC<DashboardProps> = ({ user, bookings, transactions 
           title: 'Payment Outstanding',
           subtitle: `Order #${b.id.substring(0,4)} - ${b.clientName}`,
           type: 'urgent',
+          booking: b,
           onClick: () => onSelectBooking(b.id)
       })),
       ...approvalNeeded.map(b => ({
@@ -81,6 +70,7 @@ const DashboardView: React.FC<DashboardProps> = ({ user, bookings, transactions 
           title: 'Review Needed',
           subtitle: `${b.clientName} waiting for approval`,
           type: 'normal',
+          booking: b,
           onClick: () => onSelectBooking(b.id)
       })),
        ...pendingEdits.slice(0, 2).map(b => ({
@@ -88,11 +78,17 @@ const DashboardView: React.FC<DashboardProps> = ({ user, bookings, transactions 
           title: 'Production Queue',
           subtitle: `${b.clientName} is in ${b.status.toLowerCase()}`,
           type: 'normal',
+          booking: b,
           onClick: () => onSelectBooking(b.id)
       }))
-  ].slice(0, 5); // Limit to 5 items
+  ].slice(0, 5); 
 
   const formattedDate = new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+  // --- ON-SET MODE LOGIC (For Photographers) ---
+  const activeShoot = todayBookings.find(b => 
+      b.status === 'SHOOTING' && b.photographerId === user.id
+  );
 
   return (
     <Motion.div 
@@ -104,7 +100,7 @@ const DashboardView: React.FC<DashboardProps> = ({ user, bookings, transactions 
       <div className="flex flex-col md:flex-row justify-between items-end md:items-center">
         <div>
           <h1 className="text-4xl font-display font-bold text-lumina-text mb-2">
-            Good Afternoon, <span className="text-lumina-accent">{user.name.split(' ')[0]}</span>
+            Good Afternoon, <span className="text-lumina-accent">{(user.name || '').split(' ')[0]}</span>
           </h1>
           <p className="text-lumina-muted">Schedule for <span className="text-lumina-text font-bold">{formattedDate}</span></p>
         </div>
@@ -113,6 +109,26 @@ const DashboardView: React.FC<DashboardProps> = ({ user, bookings, transactions 
           <span className="text-sm font-mono text-lumina-accent">SYSTEM ONLINE</span>
         </div>
       </div>
+
+      {/* ON-SET MODE CARD (Photographers Only) */}
+      {activeShoot && (
+          <Motion.div variants={itemVariants} className="bg-gradient-to-r from-blue-900/40 to-indigo-900/40 border border-blue-500/30 rounded-2xl p-6 relative overflow-hidden">
+              <div className="absolute top-4 right-4 flex gap-2">
+                  <span className="bg-blue-500 text-white text-[10px] font-bold px-3 py-1 rounded-full animate-pulse">LIVE SESSION</span>
+              </div>
+              <h2 className="text-2xl font-bold text-white mb-1">On-Set Mode</h2>
+              <p className="text-blue-200 text-sm mb-4">You are currently shooting for <span className="font-bold text-white">{activeShoot.clientName}</span>.</p>
+              
+              <div className="flex flex-wrap gap-4">
+                  <button onClick={() => onSelectBooking(activeShoot.id)} className="bg-blue-500 hover:bg-blue-600 text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 transition-colors">
+                      <Camera size={18}/> View Session Details
+                  </button>
+                  <button onClick={() => onNavigate('inventory')} className="bg-lumina-surface border border-lumina-highlight text-white px-6 py-3 rounded-xl font-bold flex items-center gap-2 hover:bg-lumina-highlight transition-colors">
+                      <CheckSquare size={18}/> Check Assets
+                  </button>
+              </div>
+          </Motion.div>
+      )}
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -192,12 +208,11 @@ const DashboardView: React.FC<DashboardProps> = ({ user, bookings, transactions 
                <Motion.div 
                  variants={itemVariants}
                  key={item.id}
-                 onClick={item.onClick}
-                 className={`p-4 rounded-xl border cursor-pointer hover:scale-[1.02] transition-all shadow-sm
+                 className={`p-4 rounded-xl border transition-all shadow-sm flex flex-col gap-3
                     ${item.type === 'urgent' ? 'bg-rose-500/10 border-rose-500/30 hover:bg-rose-500/20' : 'bg-lumina-surface border-lumina-highlight hover:border-lumina-accent/50'}
                  `}
                >
-                  <div className="flex justify-between items-start">
+                  <div className="flex justify-between items-start cursor-pointer" onClick={item.onClick}>
                       <div className="flex items-center gap-3">
                           {item.type === 'urgent' ? <AlertCircle className="text-rose-500 w-5 h-5"/> : <Clock className="text-lumina-muted w-5 h-5"/>}
                           <div>
@@ -209,6 +224,16 @@ const DashboardView: React.FC<DashboardProps> = ({ user, bookings, transactions 
                           <ArrowRight size={14} />
                       </div>
                   </div>
+                  
+                  {/* Smart Action Buttons */}
+                  {item.title === 'Payment Outstanding' && onOpenWhatsApp && (
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); onOpenWhatsApp(item.booking); }}
+                        className="w-full py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg flex items-center justify-center gap-2 transition-colors"
+                      >
+                          <MessageCircle size={14}/> Send Reminder (WA)
+                      </button>
+                  )}
                </Motion.div>
            ))}
            {actionItems.length === 0 && (

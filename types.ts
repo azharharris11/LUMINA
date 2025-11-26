@@ -148,11 +148,15 @@ export interface Transaction {
   relatedAccountId?: string; 
   category: string; 
   status: 'COMPLETED' | 'PENDING';
-  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'; // NEW: For Expense Approval
-  submittedBy?: string; // NEW: ID of user who submitted expense
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'; 
+  submittedBy?: string; 
   bookingId?: string; 
   ownerId?: string;
   archived?: boolean;
+  // NEW FIELDS
+  receiptUrl?: string;
+  isRecurring?: boolean;
+  recurringFrequency?: 'MONTHLY' | 'WEEKLY';
 }
 
 export interface MonthlyMetric {
@@ -188,6 +192,8 @@ export interface Package {
   active: boolean;
   costBreakdown: PackageCostItem[]; 
   turnaroundDays?: number; 
+  defaultTasks?: string[]; // Automation
+  defaultAssetIds?: string[]; // Asset Bundling
   archived?: boolean; 
   ownerId?: string;
 }
@@ -230,7 +236,7 @@ export interface WhatsAppTemplates {
 export interface WorkflowAutomation {
     id: string;
     triggerStatus: ProjectStatus;
-    tasks: string[]; // Array of task titles to auto-create
+    tasks: string[]; 
 }
 
 export type SiteTheme = 'NOIR' | 'ETHEREAL' | 'VOGUE' | 'MINIMAL' | 'CINEMA' | 'RETRO' | 'ATELIER' | 'HORIZON' | 'BOLD' | 'IMPACT' | 'CLEANSLATE' | 'AUTHORITY';
@@ -362,7 +368,7 @@ export interface StudioConfig {
   
   // Production Policy
   defaultTurnaroundDays?: number; 
-  workflowAutomations?: WorkflowAutomation[]; // NEW: Automation Rules
+  workflowAutomations?: WorkflowAutomation[]; 
 
   logoUrl?: string;
   npwp?: string;
@@ -393,6 +399,7 @@ export interface InventoryViewProps {
 export interface SettingsViewProps {
   packages: Package[];
   config: StudioConfig;
+  assets?: Asset[]; // Needed for asset bundling
   onAddPackage?: (pkg: Package) => void;
   onUpdatePackage?: (pkg: Package) => void;
   onDeletePackage?: (id: string) => void;
@@ -401,6 +408,8 @@ export interface SettingsViewProps {
   currentUser?: User; 
   onUpdateUserProfile?: (user: User) => Promise<void>;
   onDeleteAccount?: () => Promise<void>;
+  googleToken?: string | null;
+  setGoogleToken?: (token: string | null) => void;
 }
 
 export interface FinanceViewProps {
@@ -411,10 +420,12 @@ export interface FinanceViewProps {
   transactions?: Transaction[];
   config: StudioConfig;
   onTransfer?: (fromId: string, toId: string, amount: number) => void;
-  onRecordExpense?: (expenseData: { description: string; amount: number; category: string; accountId: string, submittedBy?: string }) => void;
+  onRecordExpense?: (expenseData: { description: string; amount: number; category: string; accountId: string, submittedBy?: string, receiptUrl?: string, isRecurring?: boolean }) => void;
   onSettleBooking?: (bookingId: string, amount: number, accountId: string) => void;
   onDeleteTransaction?: (id: string) => void; 
-  onApproveExpense?: (transactionId: string) => void; // NEW
+  onApproveExpense?: (transactionId: string) => void; 
+  onAddAccount?: (account: Account) => void;
+  onUpdateAccount?: (account: Account) => void;
 }
 
 export interface TeamViewProps {
@@ -424,6 +435,7 @@ export interface TeamViewProps {
   onUpdateUser?: (user: User) => void;
   onDeleteUser?: (id: string) => void;
   currentUser?: User; // Needed for My Earnings
+  onRecordExpense?: (expenseData: { description: string; amount: number; category: string; accountId: string, submittedBy?: string }) => void;
 }
 
 export interface CalendarViewProps {
@@ -490,4 +502,45 @@ export interface SidebarProps {
   onSwitchApp: () => void;
   isDarkMode: boolean; 
   onToggleTheme: () => void;
+  bookings: Booking[]; // Added bookings to calculate badges
+}
+
+export interface DashboardProps {
+  user: User;
+  bookings: Booking[];
+  transactions?: Transaction[];
+  onSelectBooking: (bookingId: string) => void; 
+  selectedDate: string; 
+  onNavigate: (view: string) => void;
+  config?: StudioConfig;
+  onOpenWhatsApp?: (booking: Booking) => void; // New prop
+  onLogActivity?: (bookingId: string, action: string, details: string) => void;
+}
+
+export interface WhatsAppModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  booking: Booking | null;
+  config: StudioConfig;
+  onLogActivity?: (bookingId: string, action: string, details: string) => void;
+}
+
+export interface ProjectDrawerProps {
+  isOpen: boolean;
+  onClose: () => void;
+  booking: Booking | null;
+  photographer: User | undefined;
+  onUpdateBooking: (booking: Booking) => void;
+  onDeleteBooking?: (id: string) => void;
+  bookings?: Booking[]; 
+  config?: StudioConfig; 
+  packages?: Package[]; 
+  currentUser?: User;
+  assets?: Asset[];
+  users?: User[];
+  transactions?: Transaction[];
+  onAddTransaction?: (data: { description: string; amount: number; category: string; accountId: string; bookingId?: string }) => void;
+  accounts?: Account[];
+  googleToken?: string | null;
+  onLogActivity?: (bookingId: string, action: string, details: string) => void;
 }
