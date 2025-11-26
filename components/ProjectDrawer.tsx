@@ -1,11 +1,8 @@
-
-
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Booking, ProjectStatus, User, BookingFile, StudioConfig, Package, BookingItem, BookingTask, ActivityLog, Asset, BookingComment, Discount, TimeLog, Transaction, Account } from '../types';
 import { X, Image as ImageIcon, FileSignature, Clock, CheckCircle2, Circle, Upload, PenTool, Download, Calendar, Save, Trash2, Edit, Plus, Loader2, FileText, ExternalLink, Paperclip, Check, Send, RefreshCw, AlertCircle, Lock, Timer, ListChecks, History, DollarSign, User as UserIcon, MapPin, Briefcase, Camera, Box, Wrench, AlertTriangle, TrendingUp, Tag, MessageSquare, Play, Square, Pause, PieChart, MinusCircle, ChevronRight, HardDrive, LayoutDashboard, FolderOpen, Palette, ArrowLeft, Folder, MoreVertical, FolderPlus, Eye, MessageCircle, Copy } from 'lucide-react';
-import WhatsAppModal from './WhatsAppModal'; // Need to import to use logic or simulate
+import WhatsAppModal from './WhatsAppModal'; 
 
 interface ProjectDrawerProps {
   isOpen: boolean;
@@ -49,6 +46,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   }>({ date: '', timeStart: '', duration: 1, studio: '', photographerId: '' });
 
   const [isUploading, setIsUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   
   // --- DRIVE PICKER STATE ---
   const [showDrivePicker, setShowDrivePicker] = useState(false);
@@ -138,7 +136,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   }, []);
 
-  // ... (Drive Functions remain the same) ...
+  // --- DRIVE FUNCTIONS ---
   const fetchDriveFolders = async (parentId: string) => {
       if (!googleToken) return;
       setIsLoadingDrive(true);
@@ -266,7 +264,78 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // ... (Log functions, Timer functions remain same) ...
+  const handleUploadToDrive = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      if (!googleToken) {
+          alert("Google Drive not connected. Please go to Settings > Integrations.");
+          return;
+      }
+
+      // Extract ID from url: https://drive.google.com/drive/u/0/folders/123456...
+      const match = booking?.deliveryUrl?.match(/\/folders\/([a-zA-Z0-9-_]+)/);
+      const folderId = match ? match[1] : null;
+
+      if (!folderId) {
+          alert("No valid Drive Folder linked. Please click 'Create / Link Folder' first.");
+          return;
+      }
+
+      setIsUploading(true);
+      try {
+          const metadata = {
+              name: file.name,
+              mimeType: file.type,
+              parents: [folderId]
+          };
+
+          const form = new FormData();
+          form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
+          form.append('file', file);
+
+          const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
+              method: 'POST',
+              headers: {
+                  'Authorization': `Bearer ${googleToken}`,
+              },
+              body: form
+          });
+
+          if (!res.ok) {
+              if (res.status === 401) {
+                  alert("Google Session Expired. Please reconnect in Settings.");
+              } else {
+                  const err = await res.json();
+                  throw new Error(err.error?.message || "Upload failed");
+              }
+              return;
+          }
+          
+          if(booking && onLogActivity) {
+              onLogActivity(booking.id, 'DRIVE_UPLOAD', `Uploaded ${file.name} to Drive`);
+          }
+          
+          alert(`'${file.name}' uploaded successfully to the project folder!`);
+          
+      } catch (error: any) {
+          console.error("Drive Upload Error:", error);
+          alert("Upload failed: " + error.message);
+      } finally {
+          setIsUploading(false);
+          if (fileInputRef.current) fileInputRef.current.value = '';
+      }
+  };
+
+  const handleUploadClick = () => {
+      if (!booking?.deliveryUrl) {
+          alert("Please link a Google Drive folder first.");
+          return;
+      }
+      fileInputRef.current?.click();
+  };
+
+  // ... (Log functions, Timer functions) ...
   const createLocalLog = (action: string, details?: string): ActivityLog => ({
       id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       timestamp: new Date().toISOString(),
@@ -278,10 +347,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
 
   const handleStatusChange = (status: ProjectStatus) => {
       if (booking) {
-          // 1. Log Status Change
           const log = createLocalLog('STATUS_CHANGE', `Status updated to ${status}`);
-          
-          // 2. Auto-Task Generation Logic
           let newTasks: BookingTask[] = [];
           const automations = config?.workflowAutomations || [];
           const automation = automations.find(a => a.triggerStatus === status);
@@ -293,11 +359,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                   completed: false,
                   assignedTo: currentUser?.id
               }));
-              // Log Automation
-              const autoLog = createLocalLog('AUTOMATION', `Generated ${newTasks.length} tasks for ${status}`);
           }
 
-          // 3. Trigger Prompts based on Status
           if (status === 'CULLING') {
               setRevenueWarning("Tip: Did the shoot run late? Check if Overtime Fee is needed.");
               setShowOvertimePrompt(true);
@@ -319,7 +382,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
 
   const handleSaveLogistics = () => {
       if(booking) {
-          // Validate Reschedule
           const newDuration = logisticsForm.duration;
           const originalDuration = booking.duration;
           
@@ -344,7 +406,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // ... (Other Handlers) ...
   const handleAddTask = () => {
       if (booking && newTaskTitle) {
           const task: BookingTask = { id: `t-${Date.now()}`, title: newTaskTitle, completed: false };
@@ -362,7 +423,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
 
   const handleLinkDriveFolder = () => {
       if (booking) {
-          // Link the CURRENT folder in picker as project folder
           const folderName = driveBreadcrumbs[driveBreadcrumbs.length - 1].name;
           const folderLink = `https://drive.google.com/drive/u/0/folders/${currentDriveFolderId}`;
           
@@ -375,11 +435,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // Quick Actions
   const handleQuickWhatsApp = () => {
-      // Open WhatsApp Modal Trigger - Since modal is sibling, we need a way to trigger it. 
-      // For this architecture, we'll simulate opening by alerting user to use the main button or trigger prop if available.
-      // Actually, better to just open the link directly for now.
       const msg = `Hi ${booking?.clientName}, just checking in on your project!`;
       const phone = booking?.clientPhone.replace(/\D/g, '') || '';
       const url = `https://wa.me/${phone.startsWith('0') ? '62'+phone.slice(1) : phone}?text=${encodeURIComponent(msg)}`;
@@ -388,8 +444,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   };
 
   const handleCopyPortalLink = () => {
-      // Simulate Client Portal Link
-      const link = `${window.location.origin}/portal/${booking?.id}`;
+      const link = `${window.location.origin}/?site=${config?.ownerId || ''}&booking=${booking?.id}`;
       navigator.clipboard.writeText(link);
       alert("Client Portal Link Copied to Clipboard!");
   };
@@ -468,7 +523,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
         </div>
 
         {/* CONTENT */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-lumina-base/50 p-6 pb-24"> {/* Added padding-bottom for sticky footer */}
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-lumina-base/50 p-6 pb-24">
             
             {activeTab === 'OVERVIEW' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -591,7 +646,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 </div>
             )}
 
-            {/* ... (TASKS, TIMELINE, PROOFING, LOGS tabs remain same) ... */}
+            {/* TASKS TAB */}
             {activeTab === 'TASKS' && (
                 <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6 max-w-3xl mx-auto">
                     <div className="flex gap-2 mb-6">
@@ -636,6 +691,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 </div>
             )}
 
+            {/* TIMELINE / FILES TAB */}
             {activeTab === 'TIMELINE' && (
                 <div className="space-y-6">
                     <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6">
@@ -674,10 +730,23 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
 
                         {/* Delivery Actions */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div className="p-4 border border-dashed border-lumina-highlight rounded-xl flex flex-col items-center justify-center text-center hover:border-lumina-accent/50 transition-colors bg-lumina-base/30 h-32 cursor-pointer group">
-                                <Upload className="text-lumina-muted group-hover:text-white mb-2 transition-colors" />
-                                <p className="text-sm font-bold text-white">Upload Deliverables</p>
-                                <p className="text-xs text-lumina-muted">Drag & drop or click to browse</p>
+                            <div 
+                                onClick={handleUploadClick}
+                                className="p-4 border border-dashed border-lumina-highlight rounded-xl flex flex-col items-center justify-center text-center hover:border-lumina-accent/50 transition-colors bg-lumina-base/30 h-32 cursor-pointer group relative"
+                            >
+                                <input 
+                                    type="file" 
+                                    ref={fileInputRef} 
+                                    className="hidden" 
+                                    onChange={handleUploadToDrive} 
+                                />
+                                {isUploading ? (
+                                    <Loader2 className="animate-spin text-lumina-accent mb-2" />
+                                ) : (
+                                    <Upload className="text-lumina-muted group-hover:text-white mb-2 transition-colors" />
+                                )}
+                                <p className="text-sm font-bold text-white">{isUploading ? 'Uploading to Drive...' : 'Upload Deliverables'}</p>
+                                <p className="text-xs text-lumina-muted">{isUploading ? 'Please wait' : 'Click to upload to linked Drive folder'}</p>
                             </div>
                             
                             <div className="p-4 bg-lumina-base border border-lumina-highlight rounded-xl relative overflow-hidden">
@@ -694,6 +763,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                 </p>
                                 <button 
                                     disabled={!isPaymentSettled && currentUser?.role !== 'OWNER'}
+                                    onClick={handleQuickWhatsApp}
                                     className="w-full py-2 bg-lumina-surface border border-lumina-highlight hover:bg-lumina-highlight text-white text-xs font-bold rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                                 >
                                     {!isPaymentSettled && <Lock size={12}/>} Send Delivery Link
