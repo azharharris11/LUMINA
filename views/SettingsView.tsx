@@ -73,12 +73,15 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
 
       await loadGoogleScript();
 
+      // YOUR CLIENT ID
       const CLIENT_ID = '276331844787-lolqnoah70th2mm7jt2ftim37sjilu00.apps.googleusercontent.com'; 
 
       const client = google.accounts.oauth2.initTokenClient({
           client_id: CLIENT_ID,
-          // SCOPES: Calendar Events + Drive File Access
-          scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file',
+          // SCOPES: 
+          // calendar.events: Read/Write Calendar
+          // drive: FULL Access required to create/rename/delete generic folders user owns
+          scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive',
           callback: (tokenResponse: any) => {
               if (tokenResponse && tokenResponse.access_token) {
                   if(setGoogleToken) setGoogleToken(tokenResponse.access_token);
@@ -90,7 +93,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
       client.requestAccessToken();
   };
 
-  // ... (rest of package and config handlers omitted for brevity, keeping them exactly as they were) ...
+  // ... (rest of the file remains exactly the same)
   const togglePackage = (pkg: Package) => {
     if(onUpdatePackage) {
         onUpdatePackage({ ...pkg, active: !pkg.active });
@@ -340,6 +343,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
 
             {activeTab === 'OPERATIONS' && (
                 <Motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-8">
+                    {/* ... operations content ... */}
                     <div className="flex justify-between items-start mb-8">
                         <div>
                              <h2 className="text-xl font-bold text-white">Operational Policy</h2>
@@ -457,7 +461,6 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                 </Motion.div>
             )}
 
-            {/* Profile and Package tabs omitted for brevity, they remain unchanged */}
             {activeTab === 'PROFILE' && (
                 <Motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-8">
                     <div className="flex justify-between items-start mb-8">
@@ -702,6 +705,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
             {activeTab === 'NOTIFICATIONS' && (
                 <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6">
                     <h2 className="text-lg font-bold text-white mb-6">Notification Preferences</h2>
+                    {/* ... notification toggles ... */}
                     <div className="space-y-6">
                         <div>
                             <h3 className="text-xs font-bold text-lumina-muted uppercase tracking-wider mb-3">Email Alerts</h3>

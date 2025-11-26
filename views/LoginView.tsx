@@ -2,19 +2,20 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { User } from '../types';
-import { Aperture, ArrowRight, Lock, Mail, Loader2, AlertCircle } from 'lucide-react';
+import { Aperture, ArrowRight, Lock, Mail, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { signInWithEmailAndPassword, signInWithPopup } from 'firebase/auth';
 import { auth, googleProvider } from '../firebase';
 
 const Motion = motion as any;
 
 interface LoginViewProps {
-  users: User[]; // Kept for compatibility if needed, but not used for real auth
-  onLogin: (user: User) => void; // This might not be needed if we rely on onAuthStateChanged in App.tsx, but kept for prop compatibility
-  onRegisterLink?: () => void; // New prop to switch to register
+  users: User[];
+  onLogin: (user: User) => void; 
+  onRegisterLink?: () => void;
+  onHome?: () => void;
 }
 
-const LoginView: React.FC<LoginViewProps> = ({ users, onLogin, onRegisterLink }) => {
+const LoginView: React.FC<LoginViewProps> = ({ users, onLogin, onRegisterLink, onHome }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -68,6 +69,12 @@ const LoginView: React.FC<LoginViewProps> = ({ users, onLogin, onRegisterLink })
         <div className="absolute top-[-20%] left-[-10%] w-[60%] h-[60%] bg-lumina-accent/10 rounded-full blur-[150px] animate-pulse"></div>
         <div className="absolute bottom-[-20%] right-[-10%] w-[50%] h-[50%] bg-blue-600/10 rounded-full blur-[150px]"></div>
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=2071&auto=format&fit=crop')] bg-cover bg-center opacity-10 mix-blend-overlay"></div>
+      </div>
+
+      <div className="absolute top-6 left-6 z-20">
+          <button onClick={onHome} className="flex items-center gap-2 text-lumina-muted hover:text-white transition-colors font-bold text-sm">
+              <ArrowLeft size={16} /> Back to Home
+          </button>
       </div>
 
       <Motion.div 

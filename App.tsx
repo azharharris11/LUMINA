@@ -21,7 +21,7 @@ import ProjectDrawer from './components/ProjectDrawer';
 import { USERS, ACCOUNTS as INITIAL_ACCOUNTS, BOOKINGS as INITIAL_BOOKINGS, ASSETS as INITIAL_ASSETS, TRANSACTIONS as INITIAL_TRANSACTIONS, PACKAGES as INITIAL_PACKAGES, CLIENTS as INITIAL_CLIENTS, NOTIFICATIONS, STUDIO_CONFIG as INITIAL_CONFIG } from './data';
 import { User, Booking, Asset, Notification, Account, Transaction, Client, Package, StudioConfig, BookingTask, ActivityLog, PublicBookingSubmission, StudioRoom } from './types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Check, Info, AlertTriangle, Search, Database, CheckCheck, Trash, WifiOff, Cloud, ShieldAlert, ExternalLink, X, RefreshCcw, Plus } from 'lucide-react';
+import { Bell, Check, Info, AlertTriangle, Search, Database, CheckCheck, Trash, WifiOff, Cloud, ShieldAlert, ExternalLink, X, RefreshCcw, Plus, Loader2 } from 'lucide-react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, query, where, writeBatch, increment } from 'firebase/firestore';
@@ -39,7 +39,7 @@ const loadState = <T,>(key: string, fallback: T): T => {
 };
 
 type AppMode = 'LAUNCHER' | 'OS' | 'SITE';
-type AuthView = 'LOGIN' | 'REGISTER';
+type PublicView = 'LANDING' | 'LOGIN' | 'REGISTER';
 
 const PermissionErrorHelp = ({ onClose }: { onClose: () => void }) => (
   <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
@@ -100,8 +100,8 @@ service cloud.firestore {
 
 const App: React.FC = () => {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [authView, setAuthView] = useState<AuthView>('LOGIN');
-  const [hasSeenLanding, setHasSeenLanding] = useState(false);
+  const [isAuthChecking, setIsAuthChecking] = useState(true);
+  const [publicView, setPublicView] = useState<PublicView>('LANDING');
   const [currentUser, setCurrentUser] = useState<User>(USERS[0]); 
   const [appMode, setAppMode] = useState<AppMode>('LAUNCHER');
   const [currentView, setCurrentView] = useState('dashboard');
@@ -235,10 +235,10 @@ const App: React.FC = () => {
                   }
               }
               setIsLoggedIn(true);
-              setHasSeenLanding(true);
           } else {
               setIsLoggedIn(false);
           }
+          setIsAuthChecking(false);
       });
       return () => unsubscribe();
   }, []);
@@ -587,7 +587,7 @@ const App: React.FC = () => {
   const handleLogout = async () => {
       await signOut(auth);
       setIsLoggedIn(false);
-      setAuthView('LOGIN');
+      setPublicView('LOGIN');
       setBookings([]);
       setClients([]);
       setAssets([]);
@@ -609,14 +609,23 @@ const App: React.FC = () => {
       if (!isDarkMode) document.documentElement.classList.add('light-mode');
   }, []);
 
-  if (!isLoggedIn) {
-      return authView === 'LOGIN' 
-        ? <LoginView users={USERS} onLogin={() => {}} onRegisterLink={() => setAuthView('REGISTER')} />
-        : <RegisterView onLoginLink={() => setAuthView('LOGIN')} onRegisterSuccess={(u) => { setCurrentUser(u); setIsLoggedIn(true); }} />;
+  if (isAuthChecking) {
+      return (
+          <div className="min-h-screen bg-lumina-base flex items-center justify-center">
+              <Loader2 className="w-10 h-10 text-lumina-accent animate-spin" />
+          </div>
+      );
   }
 
-  if (appMode === 'LAUNCHER' && !hasSeenLanding) {
-      return <LandingPageView onGetStarted={() => setHasSeenLanding(true)} />;
+  if (!isLoggedIn) {
+      if (publicView === 'LOGIN') {
+          return <LoginView users={USERS} onLogin={() => {}} onRegisterLink={() => setPublicView('REGISTER')} onHome={() => setPublicView('LANDING')} />;
+      }
+      if (publicView === 'REGISTER') {
+          return <RegisterView onLoginLink={() => setPublicView('LOGIN')} onRegisterSuccess={(u) => { setCurrentUser(u); setIsLoggedIn(true); }} onHome={() => setPublicView('LANDING')} />;
+      }
+      // Default to Landing Page
+      return <LandingPageView onLogin={() => setPublicView('LOGIN')} onRegister={() => setPublicView('REGISTER')} />;
   }
 
   if (appMode === 'LAUNCHER') {

@@ -6,10 +6,11 @@ import { Aperture, Check, ArrowRight, X, TrendingUp, Shield, Zap, Layout, Lock }
 const Motion = motion as any;
 
 interface LandingPageViewProps {
-  onGetStarted: () => void;
+  onLogin: () => void;
+  onRegister: () => void;
 }
 
-const LandingPageView: React.FC<LandingPageViewProps> = ({ onGetStarted }) => {
+const LandingPageView: React.FC<LandingPageViewProps> = ({ onLogin, onRegister }) => {
   
   const renderPainPoint = (text: string) => (
       <div className="flex items-start gap-3 text-gray-400">
@@ -39,8 +40,8 @@ const LandingPageView: React.FC<LandingPageViewProps> = ({ onGetStarted }) => {
                   <span className="font-display font-bold text-2xl tracking-tight">LUMINA</span>
               </div>
               <div className="flex gap-4">
-                  <button onClick={onGetStarted} className="text-sm font-bold text-gray-400 hover:text-white transition-colors">LOG IN</button>
-                  <button onClick={onGetStarted} className="bg-white text-black px-5 py-2 rounded-lg font-bold text-sm hover:bg-lumina-accent transition-colors">
+                  <button onClick={onLogin} className="text-sm font-bold text-gray-400 hover:text-white transition-colors">LOG IN</button>
+                  <button onClick={onRegister} className="bg-white text-black px-5 py-2 rounded-lg font-bold text-sm hover:bg-lumina-accent transition-colors">
                       GET ACCESS
                   </button>
               </div>
@@ -69,7 +70,7 @@ const LandingPageView: React.FC<LandingPageViewProps> = ({ onGetStarted }) => {
               </p>
               
               <button 
-                onClick={onGetStarted}
+                onClick={onRegister}
                 className="group relative inline-flex items-center justify-center px-8 py-5 text-lg font-bold text-black transition-all duration-200 bg-lumina-accent font-display uppercase tracking-wider rounded-xl focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-lumina-accent hover:bg-white"
               >
                   Start Your Free Trial
@@ -205,7 +206,7 @@ const LandingPageView: React.FC<LandingPageViewProps> = ({ onGetStarted }) => {
                               <div className="flex items-center gap-2 text-sm text-gray-300"><Check size={16} className="text-lumina-accent"/> <span>WhatsApp Automation</span></div>
                           </div>
                           <button 
-                            onClick={onGetStarted}
+                            onClick={onRegister}
                             className="w-full py-4 bg-white text-black font-bold uppercase tracking-widest rounded-lg hover:bg-lumina-accent transition-colors shadow-lg shadow-white/10"
                           >
                               Start Free Trial
@@ -231,7 +232,7 @@ const LandingPageView: React.FC<LandingPageViewProps> = ({ onGetStarted }) => {
               Ready to build your empire?
           </p>
           <button 
-            onClick={onGetStarted}
+            onClick={onRegister}
             className="bg-lumina-accent text-black px-10 py-4 rounded-full font-bold uppercase tracking-widest hover:scale-105 transition-transform"
           >
               Let's Do This

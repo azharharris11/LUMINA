@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Aperture, ArrowRight, Mail, Lock, User as UserIcon, Building, Loader2, AlertCircle } from 'lucide-react';
+import { Aperture, ArrowRight, Mail, Lock, User as UserIcon, Building, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { createUserWithEmailAndPassword, updateProfile, signInWithPopup } from 'firebase/auth';
 import { doc, setDoc, getDoc } from 'firebase/firestore';
 import { auth, db, googleProvider } from '../firebase';
@@ -12,9 +12,10 @@ const Motion = motion as any;
 interface RegisterViewProps {
   onLoginLink: () => void;
   onRegisterSuccess: (user: User) => void;
+  onHome?: () => void;
 }
 
-const RegisterView: React.FC<RegisterViewProps> = ({ onLoginLink, onRegisterSuccess }) => {
+const RegisterView: React.FC<RegisterViewProps> = ({ onLoginLink, onRegisterSuccess, onHome }) => {
   const [formData, setFormData] = useState({
     fullName: '',
     studioName: '',
@@ -151,6 +152,12 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onLoginLink, onRegisterSucc
         <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-emerald-500/10 rounded-full blur-[150px] animate-pulse"></div>
         <div className="absolute bottom-[-20%] left-[-10%] w-[50%] h-[50%] bg-lumina-accent/10 rounded-full blur-[150px]"></div>
         <div className="absolute inset-0 bg-[url('https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=2071&auto=format&fit=crop')] bg-cover bg-center opacity-5 mix-blend-overlay"></div>
+      </div>
+
+      <div className="absolute top-6 left-6 z-20">
+          <button onClick={onHome} className="flex items-center gap-2 text-lumina-muted hover:text-white transition-colors font-bold text-sm">
+              <ArrowLeft size={16} /> Back to Home
+          </button>
       </div>
 
       <Motion.div 
