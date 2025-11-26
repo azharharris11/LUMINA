@@ -112,8 +112,19 @@ const App: React.FC = () => {
       return saved ? saved === 'dark' : true;
   });
 
-  // GOOGLE INTEGRATION STATE
-  const [googleToken, setGoogleToken] = useState<string | null>(null);
+  // GOOGLE INTEGRATION STATE - Persisted
+  const [googleToken, setGoogleToken] = useState<string | null>(() => {
+      return sessionStorage.getItem('lumina_google_token');
+  });
+
+  const updateGoogleToken = (token: string | null) => {
+      setGoogleToken(token);
+      if (token) {
+          sessionStorage.setItem('lumina_google_token', token);
+      } else {
+          sessionStorage.removeItem('lumina_google_token');
+      }
+  };
 
   // Date State for Calendar & Dashboard
   const [viewDate, setViewDate] = useState(new Date().toISOString().split('T')[0]);
@@ -777,7 +788,7 @@ const App: React.FC = () => {
                             bookings={bookings}
                             currentUser={currentUser}
                             googleToken={googleToken}
-                            setGoogleToken={setGoogleToken}
+                            setGoogleToken={updateGoogleToken}
                             onUpdateUserProfile={async (u) => {
                                 await updateDoc(doc(db, "users", u.id), u as any);
                                 setCurrentUser(prev => ({ ...prev, ...u }));
@@ -830,6 +841,7 @@ const App: React.FC = () => {
             transactions={transactions}
             onAddTransaction={handleAddTransaction}
             accounts={accounts}
+            googleToken={googleToken}
         />
 
         <CommandPalette 

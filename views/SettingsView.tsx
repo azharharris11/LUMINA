@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Package, StudioConfig, SettingsViewProps, StudioRoom, Booking, PackageCostItem, User } from '../types';
-import { Settings as SettingsIcon, Tag, Plus, Edit2, ToggleLeft, ToggleRight, Building, Save, Database, X, Layout, MessageSquare, Trash2, Clock, DollarSign, AlertCircle, Sliders, Briefcase, Bell, Link, User as UserIcon, CheckCircle2, Calendar, Archive, CreditCard, Smartphone, Download, RefreshCcw } from 'lucide-react';
+import { Package, StudioConfig, SettingsViewProps, StudioRoom, Booking, User } from '../types';
+import { Settings as SettingsIcon, Tag, Plus, Edit2, ToggleLeft, ToggleRight, Building, Save, X, Layout, MessageSquare, Trash2, Clock, DollarSign, AlertCircle, Sliders, Briefcase, Bell, Link, User as UserIcon, CheckCircle2, Calendar, Archive, CreditCard, Smartphone, Download, RefreshCcw, HardDrive, Check } from 'lucide-react';
 
 const Motion = motion as any;
 
@@ -20,7 +20,6 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
   
   const [profileForm, setProfileForm] = useState<Partial<User>>({ name: '', phone: '', avatar: '', specialization: '' });
 
-  // Local state for UI toggles (Mocking backend persistence for these new fields)
   const [notifications, setNotifications] = useState({
       email: { booking: true, payment: true, reminder: false },
       whatsapp: { booking: true, payment: true, reminder: true }
@@ -48,7 +47,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
   
   const [newRoom, setNewRoom] = useState<Partial<StudioRoom>>({ name: '', type: 'INDOOR', color: 'gray' });
 
-  // --- GOOGLE CALENDAR INTEGRATION LOGIC ---
+  // --- GOOGLE CALENDAR & DRIVE INTEGRATION LOGIC ---
   const loadGoogleScript = () => {
       return new Promise((resolve) => {
           if (typeof google !== 'undefined' && google.accounts) {
@@ -66,8 +65,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
 
   const handleConnectGoogle = async () => {
       if (googleToken) {
-          // Disconnect
-          if (window.confirm("Disconnect Google Calendar?")) {
+          if (window.confirm("Disconnect Google Account? This will stop Calendar Sync and Drive integrations.")) {
               if(setGoogleToken) setGoogleToken(null);
           }
           return;
@@ -75,16 +73,16 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
 
       await loadGoogleScript();
 
-      // Updated with User provided Client ID
       const CLIENT_ID = '276331844787-lolqnoah70th2mm7jt2ftim37sjilu00.apps.googleusercontent.com'; 
 
       const client = google.accounts.oauth2.initTokenClient({
           client_id: CLIENT_ID,
-          scope: 'https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/calendar.events',
+          // SCOPES: Calendar Events + Drive File Access
+          scope: 'https://www.googleapis.com/auth/calendar.events https://www.googleapis.com/auth/drive.file',
           callback: (tokenResponse: any) => {
               if (tokenResponse && tokenResponse.access_token) {
                   if(setGoogleToken) setGoogleToken(tokenResponse.access_token);
-                  alert("Successfully connected to Google Calendar!");
+                  alert("Successfully connected to Google Workspace (Calendar & Drive)!");
               }
           },
       });
@@ -92,6 +90,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
       client.requestAccessToken();
   };
 
+  // ... (rest of package and config handlers omitted for brevity, keeping them exactly as they were) ...
   const togglePackage = (pkg: Package) => {
     if(onUpdatePackage) {
         onUpdatePackage({ ...pkg, active: !pkg.active });
@@ -458,6 +457,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                 </Motion.div>
             )}
 
+            {/* Profile and Package tabs omitted for brevity, they remain unchanged */}
             {activeTab === 'PROFILE' && (
                 <Motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-8">
                     <div className="flex justify-between items-start mb-8">
@@ -637,20 +637,27 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                         <h2 className="text-lg font-bold text-white mb-4">Apps & Integrations</h2>
                         <div className="space-y-4">
                             
-                            {/* Google Calendar */}
-                            <div className="flex items-center justify-between p-4 bg-lumina-base border border-lumina-highlight rounded-xl">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
-                                        <Calendar className="text-blue-500" size={24} />
+                            {/* Google Calendar & Drive */}
+                            <div className="flex items-center justify-between p-4 bg-lumina-base border border-lumina-highlight rounded-xl relative overflow-hidden">
+                                <div className="flex items-center gap-4 relative z-10">
+                                    <div className="w-12 h-12 bg-white rounded-xl flex items-center justify-center shadow-lg">
+                                        <div className="grid grid-cols-2 gap-1">
+                                            <Calendar className="text-blue-500 w-4 h-4" />
+                                            <HardDrive className="text-green-500 w-4 h-4" />
+                                        </div>
                                     </div>
                                     <div>
-                                        <h3 className="font-bold text-white">Google Calendar</h3>
-                                        <p className="text-xs text-lumina-muted">Sync bookings to your personal schedule.</p>
+                                        <h3 className="font-bold text-white">Google Calendar & Drive</h3>
+                                        <p className="text-xs text-lumina-muted">Sync bookings to calendar and create project folders automatically.</p>
+                                        <div className="flex gap-2 mt-2">
+                                            <span className="text-[9px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded border border-blue-500/30 flex items-center gap-1"><Check size={8}/> Sync Schedule</span>
+                                            <span className="text-[9px] bg-green-500/20 text-green-300 px-2 py-0.5 rounded border border-green-500/30 flex items-center gap-1"><Check size={8}/> Project Folders</span>
+                                        </div>
                                     </div>
                                 </div>
                                 <button 
                                     onClick={handleConnectGoogle}
-                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border
+                                    className={`px-4 py-2 rounded-lg text-xs font-bold transition-all border relative z-10
                                         ${googleToken 
                                             ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/20' 
                                             : 'bg-lumina-highlight text-white border-lumina-highlight hover:bg-lumina-highlight/80'}`}

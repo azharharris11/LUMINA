@@ -1,10 +1,9 @@
 
-
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Account, Booking, ProjectStatus, Client, StudioRoom, StudioConfig, BookingItem, Discount } from '../types';
+import { User, Account, Booking, ProjectStatus, Client, StudioConfig, BookingItem, Discount } from '../types';
 import { PACKAGES } from '../data';
-import { X, Calendar, Clock, User as UserIcon, Camera, CreditCard, AlertCircle, Search, ChevronDown, Plus, Briefcase, Timer, AlertTriangle, ShieldCheck, Tag, HelpCircle, Star, History } from 'lucide-react';
+import { X, Calendar, Clock, User as UserIcon, AlertCircle, Search, ChevronDown, Plus, Timer, AlertTriangle, Star, History } from 'lucide-react';
 
 const Motion = motion as any;
 
@@ -19,9 +18,10 @@ interface NewBookingModalProps {
   onAddBooking?: (booking: Booking, paymentDetails?: { amount: number, accountId: string }) => void;
   onAddClient?: (client: Client) => void; 
   initialData?: { date: string, time: string, studio: string };
+  googleToken?: string | null;
 }
 
-const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, photographers, accounts, bookings = [], clients = [], config, onAddBooking, onAddClient, initialData }) => {
+const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, photographers, accounts, bookings = [], clients = [], config, onAddBooking, onAddClient, initialData, googleToken }) => {
   const [formData, setFormData] = useState({
       clientName: '',
       clientPhone: '',
@@ -33,7 +33,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
       studio: '', 
       photographerId: '',
       amountPaid: 0,
-      paymentAccount: accounts[0]?.id
+      paymentAccount: accounts[0]?.id || ''
   });
 
   const [isLead, setIsLead] = useState(false); 
@@ -180,11 +180,9 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
           const bEndTime = bStartTime + (b.duration * 60);
 
           // Improved Buffer Logic: Only add buffer after a session (Cleanup Time)
-          // Avoid double-sided buffer which wastes time slots
           const bEndWithBuffer = bEndTime + BUFFER_MINUTES;
 
           // Conflict Formula: (StartA < EndB) and (EndA > StartB)
-          // My Start < Their End (with buffer) AND My End > Their Start
           const isOverlapping = (newStartTime < bEndWithBuffer) && (newEndTime > bStartTime);
 
           if (isOverlapping) {
@@ -226,6 +224,49 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
       const h = Math.floor(minutes / 60);
       const m = minutes % 60;
       return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
+  };
+
+  // Helper function to sync to Google Calendar
+  const addToGoogleCalendar = async (booking: Booking) => {
+      if (!googleToken) return;
+
+      try {
+          const startDateTime = new Date(`${booking.date}T${booking.timeStart}:00`);
+          const endDateTime = new Date(startDateTime.getTime() + booking.duration * 60 * 60 * 1000);
+
+          const event = {
+              summary: `[Lumina] ${booking.clientName} - ${booking.package}`,
+              location: booking.studio,
+              description: `Phone: ${booking.clientPhone}\nStudio: ${booking.studio}\nPackage: ${booking.package}`,
+              start: {
+                  dateTime: startDateTime.toISOString(),
+                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              },
+              end: {
+                  dateTime: endDateTime.toISOString(),
+                  timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+              },
+          };
+
+          const response = await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
+              method: 'POST',
+              headers: {
+                  'Authorization': `Bearer ${googleToken}`,
+                  'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(event),
+          });
+
+          if (!response.ok) {
+              const errorData = await response.json();
+              console.error('Google Calendar Error:', errorData);
+              throw new Error('Failed to create Google Calendar event.');
+          }
+
+      } catch (error) {
+          console.error('Error adding to Google Calendar:', error);
+          alert("Booking created locally, but failed to sync to Google Calendar. Please check your connection in Settings.");
+      }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -323,10 +364,17 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
               delete newBooking.clientId;
           }
 
+          // 1. Add to Local Database
           onAddBooking(newBooking, { 
               amount: Number(formData.amountPaid), 
               accountId: formData.paymentAccount 
           });
+
+          // 2. Sync to Google Calendar if token exists
+          if (googleToken) {
+              await addToGoogleCalendar(newBooking);
+          }
+
           onClose();
           setFormData(prev => ({
             ...prev,
@@ -645,124 +693,78 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
                      )) : <option value="">No studios configured</option>}
                  </select>
                </div>
+
+               <div>
+                 <label className="block text-xs text-lumina-muted mb-1.5">Photographer (Optional)</label>
+                 <select 
+                     className="w-full bg-lumina-base border border-lumina-highlight rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-lumina-accent"
+                     value={formData.photographerId}
+                     onChange={e => setFormData({...formData, photographerId: e.target.value})}
+                 >
+                     <option value="">Any Available</option>
+                     {photographers.map(p => (
+                         <option key={p.id} value={p.id}>{p.name}</option>
+                     ))}
+                 </select>
+               </div>
             </section>
 
             <section className="space-y-4 pt-4 border-t border-lumina-highlight/50">
                <h3 className="text-sm font-bold text-lumina-accent uppercase tracking-wider flex items-center">
-                 <Briefcase size={14} className="mr-2" /> Staff Assignment
+                 <Clock size={14} className="mr-2" /> Payment & Confirmation
                </h3>
-               <div>
-                  <label className="block text-xs text-lumina-muted mb-1.5">Assign Photographer</label>
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                      {photographers.map(p => {
-                          const isAvailable = p.status === 'ACTIVE';
-                          const isBlocked = p.unavailableDates && p.unavailableDates.includes(formData.date);
-                          const isDisabled = !isAvailable || isBlocked;
-                          
-                          return (
-                            <label key={p.id} className={`cursor-pointer ${isDisabled ? 'opacity-50 cursor-not-allowed' : ''}`}>
-                                <input 
-                                    type="radio" 
-                                    name="photographer" 
-                                    className="peer sr-only" 
-                                    checked={formData.photographerId === p.id}
-                                    onChange={() => !isDisabled && setFormData({...formData, photographerId: p.id})}
-                                    disabled={isDisabled}
-                                />
-                                <div className={`flex items-center p-2 rounded-lg border bg-lumina-base transition-all
-                                    ${isDisabled 
-                                        ? 'border-lumina-highlight bg-lumina-surface' 
-                                        : 'border-lumina-highlight hover:border-lumina-accent peer-checked:bg-lumina-accent/10 peer-checked:border-lumina-accent'}
-                                `}>
-                                    <img src={p.avatar} className="w-8 h-8 rounded-full mr-2 border border-lumina-highlight" />
-                                    <div>
-                                        <span className="text-sm text-white block">{p.name.split(' ')[0]}</span>
-                                        {p.status === 'ON_LEAVE' && <span className="text-[9px] text-amber-400 uppercase font-bold">On Leave</span>}
-                                        {p.status === 'INACTIVE' && <span className="text-[9px] text-red-400 uppercase font-bold">Inactive</span>}
-                                        {isBlocked && <span className="text-[9px] text-amber-400 uppercase font-bold block">Off Day</span>}
-                                    </div>
-                                </div>
-                            </label>
-                          );
-                      })}
-                  </div>
+               
+               <div className="bg-lumina-highlight/10 rounded-lg p-4 border border-lumina-highlight">
+                   <div className="flex justify-between items-center mb-2">
+                       <span className="text-sm text-lumina-muted">Booking Total</span>
+                       <span className="text-sm font-mono text-white">Rp {calculateFinal().toLocaleString()}</span>
+                   </div>
+                   <div className="flex justify-between items-center mb-4">
+                       <span className="text-sm text-lumina-muted font-bold">Down Payment Required ({config.requiredDownPaymentPercentage}%)</span>
+                       <span className="text-sm font-mono text-emerald-400 font-bold">Rp {formData.amountPaid.toLocaleString()}</span>
+                   </div>
+                   
+                   <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-xs text-lumina-muted mb-1.5">Amount Paid Now</label>
+                            <input 
+                                type="number"
+                                className="w-full bg-lumina-base border border-lumina-highlight rounded-lg px-3 py-2 text-white font-mono focus:outline-none focus:border-lumina-accent"
+                                value={formData.amountPaid}
+                                onChange={e => setFormData({...formData, amountPaid: Number(e.target.value)})}
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-xs text-lumina-muted mb-1.5">Payment Account</label>
+                            <select 
+                                className="w-full bg-lumina-base border border-lumina-highlight rounded-lg px-3 py-2 text-white focus:outline-none focus:border-lumina-accent"
+                                value={formData.paymentAccount}
+                                onChange={e => setFormData({...formData, paymentAccount: e.target.value})}
+                            >
+                                {accounts.map(acc => (
+                                    <option key={acc.id} value={acc.id}>{acc.name}</option>
+                                ))}
+                            </select>
+                        </div>
+                   </div>
                </div>
             </section>
 
-             <section className="space-y-4 pt-4 border-t border-lumina-highlight/50">
-               <h3 className="text-sm font-bold text-lumina-accent uppercase tracking-wider flex items-center">
-                 <CreditCard size={14} className="mr-2" /> Financials
-               </h3>
-               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div>
-                      <label className="block text-xs text-lumina-muted mb-1.5 flex items-center gap-1">
-                          Amount Paid (DP) 
-                          <span className="text-[9px] text-emerald-400 bg-emerald-500/10 px-1 rounded border border-emerald-500/20">
-                              {config.requiredDownPaymentPercentage || 50}% Req
-                          </span>
-                      </label>
-                      <div className="relative">
-                          <span className="absolute left-3 top-2.5 text-lumina-muted font-bold">Rp</span>
-                          <input 
-                            type="number" 
-                            className="w-full bg-lumina-base border border-lumina-highlight rounded-lg pl-10 pr-3 py-2.5 text-white font-mono focus:outline-none focus:border-lumina-accent" 
-                            placeholder="0" 
-                            value={formData.amountPaid}
-                            onChange={e => setFormData({...formData, amountPaid: Number(e.target.value)})}
-                          />
-                      </div>
-                  </div>
-                  <div>
-                      <label className="block text-xs text-lumina-muted mb-1.5 flex items-center gap-1"><Tag size={10}/> Discount</label>
-                      <div className="flex">
-                           <input 
-                             type="number"
-                             className="w-full bg-lumina-base border border-lumina-highlight rounded-l-lg pl-3 pr-1 py-2.5 text-white font-mono focus:outline-none focus:border-lumina-accent"
-                             value={discount.value}
-                             onChange={e => setDiscount({...discount, value: Number(e.target.value)})}
-                           />
-                           <select 
-                             className="bg-lumina-highlight border border-lumina-highlight rounded-r-lg px-2 text-xs text-white outline-none"
-                             value={discount.type}
-                             onChange={e => setDiscount({...discount, type: e.target.value as any})}
-                           >
-                               <option value="FIXED">Rp</option>
-                               <option value="PERCENT">%</option>
-                           </select>
-                      </div>
-                  </div>
-                  <div>
-                    <label className="block text-xs text-lumina-muted mb-1.5">Payment Method</label>
-                    <select 
-                        className="w-full bg-lumina-base border border-lumina-highlight rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-lumina-accent"
-                        value={formData.paymentAccount}
-                        onChange={e => setFormData({...formData, paymentAccount: e.target.value})}
-                    >
-                        {accounts.map(acc => (
-                            <option key={acc.id} value={acc.id}>{acc.name} ({acc.type})</option>
-                        ))}
-                    </select>
-                  </div>
-               </div>
-               <div className="p-3 bg-lumina-highlight/20 border border-lumina-highlight rounded-lg flex justify-between items-center text-sm">
-                   <span className="text-lumina-muted">Estimated Total (After Discount)</span>
-                   <span className="font-bold font-mono text-emerald-400">Rp {calculateFinal().toLocaleString()}</span>
-               </div>
-            </section>
-
-            <div className="pt-4 border-t border-lumina-highlight bg-lumina-base flex justify-end gap-3">
-                <button type="button" onClick={onClose} className="px-6 py-2.5 rounded-xl font-bold text-lumina-muted hover:text-white transition-colors">
-                    Cancel
-                </button>
-                <button 
-                    type="submit" 
-                    disabled={!!problematicWarning && !adminOverride}
-                    className="px-8 py-2.5 rounded-xl font-bold bg-lumina-accent text-lumina-base hover:bg-lumina-accent/90 transition-all shadow-lg shadow-lumina-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                    {!!problematicWarning && !adminOverride ? 'Blocked' : isLead ? 'Save Inquiry' : softBookingOverride ? 'Force Book' : 'Create Booking'}
-                </button>
+            <div className="pt-6 border-t border-lumina-highlight flex justify-end gap-3">
+              <button 
+                type="button" 
+                onClick={onClose} 
+                className="px-6 py-3 rounded-xl text-lumina-muted font-bold hover:text-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button 
+                type="submit" 
+                className="px-8 py-3 bg-lumina-accent text-lumina-base font-bold rounded-xl hover:bg-lumina-accent/90 transition-colors shadow-lg shadow-lumina-accent/10"
+              >
+                {isLead ? 'Save Inquiry' : 'Confirm Booking'}
+              </button>
             </div>
-
           </form>
         </div>
       </Motion.div>
