@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import AppLauncher from './components/AppLauncher';
@@ -19,7 +18,7 @@ import NewBookingModal from './components/NewBookingModal';
 import CommandPalette from './components/CommandPalette';
 import ProjectDrawer from './components/ProjectDrawer';
 import { USERS, ACCOUNTS as INITIAL_ACCOUNTS, BOOKINGS as INITIAL_BOOKINGS, ASSETS as INITIAL_ASSETS, TRANSACTIONS as INITIAL_TRANSACTIONS, PACKAGES as INITIAL_PACKAGES, CLIENTS as INITIAL_CLIENTS, NOTIFICATIONS, STUDIO_CONFIG as INITIAL_CONFIG } from './data';
-import { User, Booking, Asset, Notification, Account, Transaction, Client, Package, StudioConfig, BookingTask, ActivityLog, PublicBookingSubmission, StudioRoom } from './types';
+import { User, Booking, Asset, Notification, Account, Transaction, Client, Package, StudioConfig, BookingTask, ActivityLog, PublicBookingSubmission, StudioRoom, ProjectStatus } from './types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, Check, Info, AlertTriangle, Search, Database, CheckCheck, Trash, WifiOff, Cloud, ShieldAlert, ExternalLink, X, RefreshCcw, Plus, Loader2 } from 'lucide-react';
 import { auth, db } from './firebase';
@@ -248,7 +247,7 @@ const App: React.FC = () => {
       if (permissionError) return;
 
       if (isOfflineMode) {
-          // Load offline fallback
+          // Load offline fallback (legacy)
           setBookings(loadState('bookings', []));
           setClients(loadState('clients', []));
           setAssets(loadState('assets', []));
@@ -287,30 +286,28 @@ const App: React.FC = () => {
       }, handleSnapshotError);
 
       const unsubBookings = onSnapshot(q("bookings"), (snapshot) => {
-          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
+          // Filter out archived bookings on the client side for now (or add compound query index)
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Booking)).filter(b => !b.archived);
           setBookings(data);
-          localStorage.setItem('lumina_bookings', JSON.stringify(data));
       }, handleSnapshotError);
 
       const unsubClients = onSnapshot(q("clients"), (snapshot) => {
-          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Client));
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Client)).filter(c => !c.archived);
           setClients(data);
-          localStorage.setItem('lumina_clients', JSON.stringify(data));
       }, handleSnapshotError);
 
       const unsubAssets = onSnapshot(q("assets"), (snapshot) => {
-          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Asset));
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Asset)).filter(a => !a.archived);
           setAssets(data);
       }, handleSnapshotError);
 
       const unsubTransactions = onSnapshot(q("transactions"), (snapshot) => {
-          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Transaction)).filter(t => !t.archived);
           setTransactions(data);
-          localStorage.setItem('lumina_transactions', JSON.stringify(data));
       }, handleSnapshotError);
 
       const unsubPackages = onSnapshot(q("packages"), (snapshot) => {
-          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Package));
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Package)).filter(p => !p.archived);
           
           // Seed default packages if empty (Only Owner)
           if (data.length === 0 && currentUser.role === 'OWNER') {
@@ -323,7 +320,7 @@ const App: React.FC = () => {
       }, handleSnapshotError);
 
       const unsubAccounts = onSnapshot(q("accounts"), (snapshot) => {
-          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Account));
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Account)).filter(a => !a.archived);
           // Seed default accounts if empty (Only Owner)
           if (data.length === 0 && currentUser.role === 'OWNER') {
               INITIAL_ACCOUNTS.forEach(a => {
@@ -340,10 +337,9 @@ const App: React.FC = () => {
       }, handleSnapshotError);
 
       // Fetch Team Members (Users who belong to this studio)
-      // Note: This assumes users are manually created with the correct ownerId/studioId
       const unsubUsers = onSnapshot(q("users"), (snapshot) => {
           const team = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as User));
-          // Always include self if not in list (e.g. owner might not be in 'users' query if ownerId matches differently, but here we align ownerId)
+          // Always include self if not in list
           const hasSelf = team.find(u => u.id === currentUser.id);
           if (!hasSelf) team.push(currentUser);
           setUsers(team);
@@ -484,15 +480,20 @@ const App: React.FC = () => {
       }
   };
 
-  const createDeleteHandler = (collectionName: string, stateSetter: React.Dispatch<React.SetStateAction<any[]>>) => {
+  // --- SOFT DELETE IMPLEMENTATION ---
+  const createSoftDeleteHandler = (collectionName: string, stateSetter: React.Dispatch<React.SetStateAction<any[]>>) => {
       return async (id: string) => {
+          // Optimistic UI: Remove from state immediately
           stateSetter(prev => prev.filter(item => item.id !== id));
+          
           if (!isOfflineMode) {
               try {
-                  await deleteDoc(doc(db, collectionName, id));
+                  // Soft Delete: Mark as archived instead of deleting
+                  await updateDoc(doc(db, collectionName, id), { archived: true });
               } catch (e: any) {
-                  console.error(`Error deleting from ${collectionName}:`, e);
-                  alert(`Failed to delete from server: ${e.message}`);
+                  console.error(`Error archiving ${collectionName}:`, e);
+                  alert(`Failed to archive on server: ${e.message}`);
+                  // Rollback could be implemented here by re-fetching
               }
           }
       };
@@ -515,6 +516,7 @@ const App: React.FC = () => {
               return; 
           }
 
+          // Reverse Accounting
           const accRef = doc(db, "accounts", transaction.accountId);
           const reverseAmount = transaction.type === 'INCOME' ? -transaction.amount : transaction.amount; 
           batch.update(accRef, { balance: increment(reverseAmount) });
@@ -524,7 +526,8 @@ const App: React.FC = () => {
               batch.update(bookingRef, { paidAmount: increment(-transaction.amount) });
           }
 
-          batch.delete(tRef);
+          // Soft Delete
+          batch.update(tRef, { archived: true });
           await batch.commit();
       } catch (e: any) {
           console.error("Error deleting transaction:", e);
@@ -532,13 +535,13 @@ const App: React.FC = () => {
       }
   };
 
-  const handleDeleteBooking = createDeleteHandler("bookings", setBookings);
-  const handleDeleteClient = createDeleteHandler("clients", setClients);
-  const handleDeleteAsset = createDeleteHandler("assets", setAssets);
+  const handleDeleteBooking = createSoftDeleteHandler("bookings", setBookings);
+  const handleDeleteClient = createSoftDeleteHandler("clients", setClients);
+  const handleDeleteAsset = createSoftDeleteHandler("assets", setAssets);
   const handleDeleteTransaction = handleSafeDeleteTransaction;
-  // Packages now use Soft Delete in SettingsView, but we keep this for hard delete if needed
-  const handleDeletePackage = createDeleteHandler("packages", setPackages);
-  const handleDeleteUser = createDeleteHandler("users", setUsers);
+  // Packages now use Soft Delete in SettingsView
+  const handleDeletePackage = createSoftDeleteHandler("packages", setPackages);
+  const handleDeleteUser = createSoftDeleteHandler("users", setUsers);
 
   const handleUpdateClient = async (client: Client) => {
       if(!isOfflineMode) await updateDoc(doc(db, "clients", client.id), client as any);
@@ -557,10 +560,28 @@ const App: React.FC = () => {
       const batch = writeBatch(db);
       const ownerId = getActiveOwnerId();
       
+      const booking = bookings.find(b => b.id === bookingId);
+      if (!booking) return;
+
+      const newPaidAmount = booking.paidAmount + amount;
+      
+      // Status Logic: 
+      // If refunded to 0 -> REFUNDED
+      // If paid > 0 -> COMPLETED (or BOOKED if partial)
+      let newStatus: ProjectStatus = booking.status;
+      
+      if (amount < 0 && newPaidAmount <= 0) {
+          newStatus = 'REFUNDED';
+      } else if (amount > 0) {
+          newStatus = 'COMPLETED'; // Auto-mark completed on payment, or keep existing if needed
+      } else if (amount < 0) {
+          // Partial Refund, keep as is or move back to BOOKED
+      }
+
       const bookingRef = doc(db, "bookings", bookingId);
       batch.update(bookingRef, { 
           paidAmount: increment(amount),
-          status: amount > 0 ? 'COMPLETED' : 'BOOKED'
+          status: newStatus
       });
 
       const accountRef = doc(db, "accounts", accountId);
@@ -571,11 +592,11 @@ const App: React.FC = () => {
       batch.set(tRef, {
           id: tId,
           date: new Date().toISOString(),
-          description: `Settlement for Booking #${bookingId.substring(0,4)}`,
-          amount: amount,
-          type: amount >= 0 ? 'INCOME' : 'EXPENSE', 
+          description: amount < 0 ? `Refund for Booking #${bookingId.substring(0,4)}` : `Settlement for Booking #${bookingId.substring(0,4)}`,
+          amount: Math.abs(amount), // Store as positive magnitude
+          type: amount >= 0 ? 'INCOME' : 'EXPENSE', // Negative settlement is an expense (refund)
           accountId: accountId,
-          category: 'Sales / Settlement',
+          category: amount >= 0 ? 'Sales / Settlement' : 'Refunds',
           status: 'COMPLETED',
           bookingId: bookingId,
           ownerId
@@ -827,6 +848,7 @@ const App: React.FC = () => {
             accounts={accounts}
             bookings={bookings}
             clients={clients}
+            assets={assets} // Passed here
             config={config}
             onAddBooking={handleAddBooking}
             onAddClient={handleAddClient}
@@ -877,12 +899,5 @@ const App: React.FC = () => {
     </div>
   );
 };
-
-const PlusIcon = ({ size }: { size: number }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-        <line x1="12" y1="5" x2="12" y2="19"></line>
-        <line x1="5" y1="12" x2="19" y2="12"></line>
-    </svg>
-);
 
 export default App;

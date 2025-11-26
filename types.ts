@@ -15,7 +15,8 @@ export interface User {
   joinedDate: string; 
   unavailableDates?: string[]; 
   ownerId?: string;
-  studioId?: string; // NEW: Links staff to the Studio Owner's data
+  studioId?: string; 
+  archived?: boolean;
 }
 
 // ... (Keep all existing interfaces exactly as they are until SidebarProps) ...
@@ -29,9 +30,10 @@ export interface Account {
   balance: number;
   accountNumber?: string;
   ownerId?: string;
+  archived?: boolean;
 }
 
-export type ProjectStatus = 'INQUIRY' | 'BOOKED' | 'SHOOTING' | 'CULLING' | 'EDITING' | 'REVIEW' | 'COMPLETED' | 'CANCELLED';
+export type ProjectStatus = 'INQUIRY' | 'BOOKED' | 'SHOOTING' | 'CULLING' | 'EDITING' | 'REVIEW' | 'COMPLETED' | 'CANCELLED' | 'REFUNDED';
 
 export interface BookingFile {
   id: string;
@@ -133,6 +135,7 @@ export interface Booking {
   costSnapshot?: PackageCostItem[];
   taxSnapshot?: number; 
   ownerId?: string;
+  archived?: boolean;
 }
 
 export interface Transaction {
@@ -147,6 +150,7 @@ export interface Transaction {
   status: 'COMPLETED' | 'PENDING';
   bookingId?: string; 
   ownerId?: string;
+  archived?: boolean;
 }
 
 export interface MonthlyMetric {
@@ -170,6 +174,7 @@ export interface Asset {
   notes?: string; 
   lastUpdated?: string;
   ownerId?: string;
+  archived?: boolean;
 }
 
 export interface Package {
@@ -195,6 +200,7 @@ export interface Client {
   notes: string; 
   joinedDate: string;
   ownerId?: string;
+  archived?: boolean;
 }
 
 export interface Notification {
@@ -448,6 +454,7 @@ export interface NewBookingModalProps {
   accounts: Account[];
   bookings?: Booking[]; 
   clients?: Client[]; 
+  assets?: Asset[]; // NEW: For inventory checking
   config: StudioConfig; 
   onAddBooking?: (booking: Booking, paymentDetails?: { amount: number, accountId: string }) => void;
   onAddClient?: (client: Client) => void;

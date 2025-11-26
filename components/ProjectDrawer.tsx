@@ -1,4 +1,5 @@
 
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Booking, ProjectStatus, User, BookingFile, StudioConfig, Package, BookingItem, BookingTask, ActivityLog, Asset, BookingComment, Discount, TimeLog, Transaction, Account } from '../types';
@@ -51,7 +52,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   const [driveBreadcrumbs, setDriveBreadcrumbs] = useState<DriveFolder[]>([{id: 'root', name: 'My Drive'}]);
   const [driveFolderList, setDriveFolderList] = useState<DriveFolder[]>([]);
   const [isLoadingDrive, setIsLoadingDrive] = useState(false);
-  const [actionLoading, setActionLoading] = useState(false); // Generic loading for creating/renaming/deleting
+  const [actionLoading, setActionLoading] = useState(false); 
   
   // Drive Actions State
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
@@ -72,10 +73,20 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const [revenueWarning, setRevenueWarning] = useState<string | null>(null);
+  const [showOvertimePrompt, setShowOvertimePrompt] = useState(false); // NEW
 
   const [activeTimerStart, setActiveTimerStart] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerIntervalRef = useRef<number | null>(null);
+
+  // Calculations for Payment Status
+  const isPaymentSettled = useMemo(() => {
+      if (!booking) return false;
+      const tax = booking.taxSnapshot || 0;
+      const grandTotal = booking.price * (1 + tax / 100); // Simplification, proper logic below
+      // Using robust calculation from render
+      return true; // Placeholder, recalculated below properly
+  }, [booking]);
 
   useEffect(() => {
     if (booking) {
@@ -90,6 +101,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       setIsLogisticsEditing(false);
       setRescheduleError(null);
       setRevenueWarning(null);
+      setShowOvertimePrompt(false);
       setEditDiscount(booking.discount || { type: 'FIXED', value: 0 });
       setNewExpense({ description: '', amount: 0, category: 'Production Cost', accountId: accounts[0]?.id || '' });
       
@@ -97,7 +109,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       setElapsedSeconds(0);
       if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       
-      // Reset Picker
       setDriveBreadcrumbs([{id: 'root', name: 'My Drive'}]);
       setShowDrivePicker(false);
       setShowNewFolderInput(false);
@@ -112,7 +123,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   }, []);
 
-  // --- DRIVE FUNCTIONS ---
+  // ... (Drive Functions remain the same) ...
   const fetchDriveFolders = async (parentId: string) => {
       if (!googleToken) return;
       setIsLoadingDrive(true);
@@ -140,7 +151,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // Load root on open
   useEffect(() => {
       if(showDrivePicker) {
           fetchDriveFolders(currentDriveFolderId);
@@ -149,7 +159,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
 
   const handleNavigateDrive = (folder: DriveFolder) => {
       setDriveBreadcrumbs(prev => [...prev, folder]);
-      setActiveMenuId(null); // Close any open menus
+      setActiveMenuId(null); 
   };
 
   const handleDriveBack = () => {
@@ -159,7 +169,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // --- DRIVE ACTIONS (Create, Rename, Trash) ---
   const createSubFolder = async () => {
       if (!newFolderName.trim() || !googleToken) return;
       setActionLoading(true);
@@ -180,8 +189,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
           });
 
           if (!response.ok) throw new Error("Failed to create folder");
-          
-          // Refresh list
           await fetchDriveFolders(currentDriveFolderId);
           setShowNewFolderInput(false);
           setNewFolderName('');
@@ -244,6 +251,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
+  // ... (Log functions, Timer functions remain same) ...
   const createLocalLog = (action: string, details?: string): ActivityLog => ({
       id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       timestamp: new Date().toISOString(),
@@ -260,10 +268,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // ... (Keep all existing helper functions: checkRescheduleConflict, startTimer, stopTimer, formatTimer, etc.) ...
   const checkRescheduleConflict = () => {
       if (!bookings) return null;
-      
       const BUFFER_MINUTES = config?.bufferMinutes || 15;
       const [startH, startM] = logisticsForm.timeStart.split(':').map(Number);
       const newStartTime = startH * 60 + startM;
@@ -288,7 +294,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       const others = bookings.filter(b => 
           b.id !== booking?.id && 
           b.date === logisticsForm.date && 
-          b.status !== 'CANCELLED'
+          b.status !== 'CANCELLED' &&
+          b.status !== 'REFUNDED'
       );
 
       for (const b of others) {
@@ -335,7 +342,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
               userName: currentUser?.name || 'Unknown',
               startTime: new Date(activeTimerStart).toISOString(),
               endTime: new Date(endTime).toISOString(),
-              durationMinutes: durationMins || 1, // Minimum 1 min
+              durationMinutes: durationMins || 1, 
               notes: 'Manual timer entry'
           };
 
@@ -372,11 +379,14 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
               return;
           }
 
+          // Detect Overtime
           if (logisticsForm.duration > booking.duration) {
                const extraHours = logisticsForm.duration - booking.duration;
-               setRevenueWarning(`Duration increased by ${extraHours}h. Don't forget to add an Overtime Fee in Financials.`);
+               setRevenueWarning(`Duration increased by ${extraHours}h.`);
+               setShowOvertimePrompt(true);
           } else {
                setRevenueWarning(null);
+               setShowOvertimePrompt(false);
           }
 
           const log = createLocalLog('RESCHEDULED', `Logistics updated: ${logisticsForm.date} @ ${logisticsForm.timeStart} in ${logisticsForm.studio}`);
@@ -390,6 +400,34 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
+  const handleAddOvertimeFee = () => {
+      if (booking && showOvertimePrompt) {
+          const extraHours = logisticsForm.duration - booking.duration;
+          // Example Rate: 500k per hour (Should be in config)
+          const rate = 500000; 
+          const fee = extraHours * rate;
+          
+          const newItem: BookingItem = {
+              id: `item-${Date.now()}`,
+              description: `Overtime Fee (${extraHours}h)`,
+              quantity: 1,
+              unitPrice: fee,
+              total: fee
+          };
+          
+          const log = createLocalLog('OVERTIME_ADDED', `Added overtime fee: Rp ${fee}`);
+          
+          onUpdateBooking({
+              ...booking,
+              items: [...(booking.items || []), newItem],
+              logs: [log, ...(booking.logs || [])]
+          });
+          
+          setShowOvertimePrompt(false);
+          setRevenueWarning(null);
+      }
+  }
+
   const handleDelete = () => {
       if (booking && onDeleteBooking) {
           if (window.confirm('Delete this project permanently?')) {
@@ -399,6 +437,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
+  // ... (Remaining functions: handleAddExpense, toggleTask, addTask, addComment, signContract, handleFileUpload, createDriveFolder) ...
+  
   const handleAddExpense = () => {
       if (onAddTransaction && booking && newExpense.description && newExpense.amount > 0) {
           onAddTransaction({
@@ -417,52 +457,25 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
           const updatedTasks = booking.tasks.map(t => 
               t.id === taskId ? { ...t, completed: !t.completed } : t
           );
-          
           const task = booking.tasks.find(t => t.id === taskId);
           const log = createLocalLog('TASK_UPDATE', `${task?.title} marked as ${!task?.completed ? 'Done' : 'Pending'}`);
-
-          onUpdateBooking({
-              ...booking,
-              tasks: updatedTasks,
-              logs: [log, ...(booking.logs || [])]
-          });
+          onUpdateBooking({ ...booking, tasks: updatedTasks, logs: [log, ...(booking.logs || [])] });
       }
   };
 
   const addTask = () => {
       if (booking && newTaskTitle.trim()) {
-          const newTask: BookingTask = {
-              id: `t-${Date.now()}`,
-              title: newTaskTitle,
-              completed: false,
-              assignedTo: currentUser?.id
-          };
-          
+          const newTask: BookingTask = { id: `t-${Date.now()}`, title: newTaskTitle, completed: false, assignedTo: currentUser?.id };
           const log = createLocalLog('TASK_ADDED', `New Task: ${newTaskTitle}`);
-
-          onUpdateBooking({
-              ...booking,
-              tasks: [newTask, ...(booking.tasks || [])],
-              logs: [log, ...(booking.logs || [])]
-          });
+          onUpdateBooking({ ...booking, tasks: [newTask, ...(booking.tasks || [])], logs: [log, ...(booking.logs || [])] });
           setNewTaskTitle('');
       }
   };
 
   const addComment = () => {
       if (booking && newComment.trim()) {
-          const comment: BookingComment = {
-              id: `c-${Date.now()}`,
-              text: newComment,
-              userId: currentUser?.id || 'sys',
-              userName: currentUser?.name || 'System',
-              timestamp: new Date().toISOString()
-          };
-          
-          onUpdateBooking({
-              ...booking,
-              comments: [comment, ...(booking.comments || [])]
-          });
+          const comment: BookingComment = { id: `c-${Date.now()}`, text: newComment, userId: currentUser?.id || 'sys', userName: currentUser?.name || 'System', timestamp: new Date().toISOString() };
+          onUpdateBooking({ ...booking, comments: [comment, ...(booking.comments || [])] });
           setNewComment('');
       }
   };
@@ -470,12 +483,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   const signContract = () => {
       if (booking) {
           const log = createLocalLog('CONTRACT_SIGNED', 'Digital signature captured');
-          onUpdateBooking({
-              ...booking,
-              contractStatus: 'SIGNED',
-              contractSignedDate: new Date().toISOString(),
-              logs: [log, ...(booking.logs || [])]
-          });
+          onUpdateBooking({ ...booking, contractStatus: 'SIGNED', contractSignedDate: new Date().toISOString(), logs: [log, ...(booking.logs || [])] });
       }
   }
 
@@ -483,18 +491,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       setIsUploading(true);
       setTimeout(() => {
           if (booking) {
-              const newFile: BookingFile = {
-                  id: `f-${Date.now()}`,
-                  name: `Upload_${new Date().getTime()}.jpg`,
-                  url: 'https://images.unsplash.com/photo-1605559424843-9e4c228bf1c2',
-                  type: 'image/jpeg',
-                  size: '2.4 MB',
-                  uploadedAt: new Date().toISOString()
-              };
-              onUpdateBooking({
-                  ...booking,
-                  files: [...(booking.files || []), newFile]
-              });
+              const newFile: BookingFile = { id: `f-${Date.now()}`, name: `Upload_${new Date().getTime()}.jpg`, url: 'https://images.unsplash.com/photo-1605559424843-9e4c228bf1c2', type: 'image/jpeg', size: '2.4 MB', uploadedAt: new Date().toISOString() };
+              onUpdateBooking({ ...booking, files: [...(booking.files || []), newFile] });
           }
           setIsUploading(false);
       }, 1500);
@@ -505,52 +503,23 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
           alert("Please connect your Google Account in Settings first.");
           return;
       }
-      
       setIsUploading(true);
       try {
-          const folderMetadata = {
-              name: `Lumina - ${booking.clientName} - ${booking.package}`,
-              mimeType: 'application/vnd.google-apps.folder',
-              parents: [parentId]
-          };
-
-          const response = await fetch('https://www.googleapis.com/drive/v3/files', {
-              method: 'POST',
-              headers: {
-                  'Authorization': `Bearer ${googleToken}`,
-                  'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(folderMetadata),
-          });
-
+          const folderMetadata = { name: `Lumina - ${booking.clientName} - ${booking.package}`, mimeType: 'application/vnd.google-apps.folder', parents: [parentId] };
+          const response = await fetch('https://www.googleapis.com/drive/v3/files', { method: 'POST', headers: { 'Authorization': `Bearer ${googleToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(folderMetadata) });
           if (!response.ok) {
               const errorData = await response.json();
-              if (response.status === 401) {
-                  throw new Error("Session expired. Please Disconnect & Reconnect Google in Settings.");
-              }
-              if (response.status === 403) {
-                  throw new Error("Permission denied. Ensure you granted sufficient permissions in Settings.");
-              }
+              if (response.status === 401) throw new Error("Session expired. Please Disconnect & Reconnect Google in Settings.");
+              if (response.status === 403) throw new Error("Permission denied. Ensure you granted sufficient permissions in Settings.");
               throw new Error(errorData.error?.message || "Unknown Drive API Error");
           }
-
           const data = await response.json();
-          
           if (data.id) {
-              const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}?fields=webViewLink`, {
-                  headers: { 'Authorization': `Bearer ${googleToken}` }
-              });
-              
+              const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}?fields=webViewLink`, { headers: { 'Authorization': `Bearer ${googleToken}` } });
               if (!fileRes.ok) throw new Error("Created folder but failed to get link.");
-              
               const fileData = await fileRes.json();
-              
               const log = createLocalLog('DRIVE_CREATED', `Created Google Drive folder: ${data.id}`);
-              onUpdateBooking({
-                  ...booking,
-                  deliveryUrl: fileData.webViewLink || `https://drive.google.com/drive/folders/${data.id}`,
-                  logs: [log, ...(booking.logs || [])]
-              });
+              onUpdateBooking({ ...booking, deliveryUrl: fileData.webViewLink || `https://drive.google.com/drive/folders/${data.id}`, logs: [log, ...(booking.logs || [])] });
               alert("Folder created successfully! Link added to Delivery URL.");
               setShowDrivePicker(false);
           } else {
@@ -570,6 +539,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
           case 'SHOOTING': return 'bg-blue-500/20 text-blue-400 border-blue-500/50';
           case 'COMPLETED': return 'bg-emerald-500/20 text-emerald-400 border-emerald-500/50';
           case 'CANCELLED': return 'bg-rose-500/20 text-rose-400 border-rose-500/50';
+          case 'REFUNDED': return 'bg-purple-500/20 text-purple-400 border-purple-500/50';
           default: return 'bg-lumina-highlight text-white border-lumina-highlight';
       }
   }
@@ -578,24 +548,18 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
 
   // Calculations
   const currentItems = booking.items || [];
-  const calculatedSubtotal = currentItems.length > 0 
-      ? currentItems.reduce((acc, item) => acc + item.total, 0)
-      : booking.price;
-
+  const calculatedSubtotal = currentItems.length > 0 ? currentItems.reduce((acc, item) => acc + item.total, 0) : booking.price;
   const currentDiscount = booking.discount || { type: 'FIXED', value: 0 };
-  const discountAmount = currentDiscount.type === 'PERCENT' 
-    ? calculatedSubtotal * (currentDiscount.value / 100) 
-    : currentDiscount.value;
-
+  const discountAmount = currentDiscount.type === 'PERCENT' ? calculatedSubtotal * (currentDiscount.value / 100) : currentDiscount.value;
   const subtotalAfterDiscount = Math.max(0, calculatedSubtotal - discountAmount);
   const taxRate = booking.taxSnapshot !== undefined ? booking.taxSnapshot : (config?.taxRate || 0);
   const taxAmount = subtotalAfterDiscount * (taxRate / 100);
   const grandTotal = subtotalAfterDiscount + taxAmount;
+  const fullyPaid = booking.paidAmount >= (grandTotal - 100); // Tolerance for float
 
-  // Profit Calculations
+  // ... (Profit calcs) ...
   const projectExpenses = transactions.filter(t => t.bookingId === booking.id && t.type === 'EXPENSE');
   const totalDirectExpenses = projectExpenses.reduce((acc, t) => acc + t.amount, 0);
-
   let packageCostBreakdown: any[] = [];
   if (booking.costSnapshot && booking.costSnapshot.length > 0) {
       packageCostBreakdown = booking.costSnapshot;
@@ -603,24 +567,19 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       const matchedPackage = packages?.find(p => p.name === booking.package);
       packageCostBreakdown = matchedPackage?.costBreakdown || [];
   }
-  
   const totalBaseCost = packageCostBreakdown.reduce((acc, item) => acc + item.amount, 0);
   const totalCustomItemCost = currentItems.reduce((acc, item) => acc + (item.cost || 0), 0);
   const netSalesBase = Math.max(0, grandTotal - (totalBaseCost + totalCustomItemCost + totalDirectExpenses));
-
   const photographerCommission = photographer?.commissionRate ? netSalesBase * (photographer.commissionRate / 100) : 0;
   let editorCommission = 0;
   if (booking.editorId) {
       const editor = users.find(u => u.id === booking.editorId);
-      if (editor?.commissionRate) {
-          editorCommission = netSalesBase * (editor.commissionRate / 100);
-      }
+      if (editor?.commissionRate) editorCommission = netSalesBase * (editor.commissionRate / 100);
   }
   const totalLaborCost = photographerCommission + editorCommission;
   const totalCost = totalDirectExpenses + totalLaborCost + totalBaseCost + totalCustomItemCost;
   const netProfit = grandTotal - totalCost;
   const profitMargin = grandTotal > 0 ? (netProfit / grandTotal) * 100 : 0;
-
   const trackedMinutes = getTotalTrackedTime();
   const canSeeProfit = currentUser?.role === 'OWNER' || currentUser?.role === 'FINANCE';
 
@@ -689,6 +648,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         <option value="REVIEW">Review</option>
                         <option value="COMPLETED">Completed</option>
                         <option value="CANCELLED">Cancelled</option>
+                        <option value="REFUNDED">Refunded</option>
                     </select>
                     <ChevronRight size={14} className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none opacity-50" />
                  </div>
@@ -698,7 +658,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                     {photographer?.name.split(' ')[0] || 'Unassigned'}
                  </div>
 
-                 {booking.paidAmount < grandTotal && booking.status !== 'CANCELLED' && (
+                 {!fullyPaid && booking.status !== 'CANCELLED' && booking.status !== 'REFUNDED' && (
                      <div className="flex items-center gap-2 px-3 py-1.5 bg-rose-500/10 border border-rose-500/30 rounded-lg text-rose-400 text-xs font-bold animate-pulse">
                          <AlertCircle size={14} /> Unpaid Balance
                      </div>
@@ -706,7 +666,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
             </div>
         </div>
 
-        {/* Improved Tab Navigation (Wrapping Pills) */}
+        {/* Tabs */}
         <div className="flex-none bg-lumina-surface border-b border-lumina-highlight sticky top-0 z-20 shadow-sm p-4">
             <div className="flex flex-wrap gap-2">
                 {tabs.map(tab => (
@@ -729,10 +689,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
 
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-lumina-surface">
             
-            {/* ... (Overview, Tasks, Discussion content omitted for brevity as they are unchanged) ... */}
             {activeTab === 'OVERVIEW' && (
                 <div className="space-y-8 animate-in fade-in duration-300">
-                    {/* ... (Existing Overview Content) ... */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="bg-lumina-base border border-lumina-highlight rounded-xl p-4 flex flex-col justify-between">
                              <div className="flex justify-between items-start mb-4">
@@ -797,6 +755,23 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                          {rescheduleError}
                                      </div>
                                 )}
+                                {revenueWarning && (
+                                     <div className="mb-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg flex items-center gap-2 text-amber-200 text-xs">
+                                         <AlertTriangle size={14} className="shrink-0" />
+                                         <div>
+                                             <p className="font-bold">Duration Change Detected</p>
+                                             <p>{revenueWarning}</p>
+                                             {showOvertimePrompt && (
+                                                 <button 
+                                                    onClick={handleAddOvertimeFee}
+                                                    className="mt-2 px-3 py-1 bg-amber-500 text-black text-xs font-bold rounded hover:bg-amber-400"
+                                                 >
+                                                     + Add Overtime Fee (Rp 500k/hr)
+                                                 </button>
+                                             )}
+                                         </div>
+                                     </div>
+                                )}
                                 <div className="grid grid-cols-2 gap-4 mb-4">
                                     <div>
                                         <label className="text-[10px] text-lumina-muted uppercase font-bold block mb-1">Date</label>
@@ -855,8 +830,21 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         </div>
                     </div>
 
+                    {/* Payment Lock for Deliverables */}
+                    {!fullyPaid && booking.status !== 'CANCELLED' && booking.status !== 'REFUNDED' && currentUser?.role !== 'OWNER' && (
+                        <div className="p-4 bg-rose-500/10 border border-rose-500/30 rounded-xl flex items-center gap-3 mb-4">
+                            <Lock className="text-rose-500 w-5 h-5" />
+                            <div className="flex-1">
+                                <h4 className="font-bold text-rose-400 text-sm">Delivery Locked</h4>
+                                <p className="text-xs text-rose-200">Outstanding balance must be settled before files can be downloaded.</p>
+                            </div>
+                        </div>
+                    )}
+
                     {booking.deliveryUrl && (
-                        <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-xl flex justify-between items-center">
+                        <div className={`p-4 border rounded-xl flex justify-between items-center
+                            ${!fullyPaid && currentUser?.role !== 'OWNER' ? 'bg-gray-900 border-gray-800 opacity-50 pointer-events-none' : 'bg-blue-500/10 border-blue-500/30'}
+                        `}>
                             <div className="flex items-center gap-3">
                                 <div className="p-2 bg-blue-500/20 rounded-lg text-blue-400">
                                     <ExternalLink size={18} />
@@ -879,9 +867,15 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                             <div key={file.id} className="group relative bg-lumina-base border border-lumina-highlight rounded-xl overflow-hidden hover:border-lumina-accent/50 transition-all">
                                 <div className="aspect-video bg-black/50 relative">
                                     <img src={file.url} className="w-full h-full object-cover opacity-50 group-hover:opacity-80 transition-opacity" />
-                                    <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                        <button className="p-2 bg-black/50 rounded-full text-white hover:bg-lumina-accent hover:text-black transition-colors"><Download size={16} /></button>
-                                    </div>
+                                    {(!fullyPaid && currentUser?.role !== 'OWNER') ? (
+                                        <div className="absolute inset-0 flex items-center justify-center bg-black/60">
+                                            <Lock className="text-white/50" size={20} />
+                                        </div>
+                                    ) : (
+                                        <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button className="p-2 bg-black/50 rounded-full text-white hover:bg-lumina-accent hover:text-black transition-colors"><Download size={16} /></button>
+                                        </div>
+                                    )}
                                 </div>
                                 <div className="p-3">
                                     <p className="text-xs font-bold text-white truncate">{file.name}</p>
@@ -893,7 +887,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 </div>
             )}
 
-            {/* ... (Other tabs like LOGS, DISCUSSION, PROFITABILITY, CONTRACT, MOODBOARD remain identical) ... */}
+            {/* ... (Rest of Tabs) ... */}
             {activeTab === 'CONTRACT' && (
                 <div className="flex flex-col items-center justify-center h-64 text-center space-y-4 animate-in fade-in duration-300">
                     <FileSignature size={48} className="text-lumina-muted opacity-20" />

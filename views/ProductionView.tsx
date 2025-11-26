@@ -1,4 +1,5 @@
 
+
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Booking, ProjectStatus, User, StudioConfig, Package } from '../types';
@@ -30,12 +31,6 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
     { id: 'COMPLETED', label: 'Ready / Done', color: 'bg-emerald-500/10', borderColor: 'border-emerald-500/50' },
   ];
 
-  const isPaymentSettled = (booking: Booking) => {
-      const taxRate = config.taxRate || 0;
-      const totalDue = booking.price + (booking.price * taxRate / 100);
-      return booking.paidAmount >= totalDue;
-  }
-
   const getNextStage = (status: ProjectStatus): ProjectStatus | null => {
       const flow: ProjectStatus[] = ['INQUIRY', 'BOOKED', 'SHOOTING', 'CULLING', 'EDITING', 'REVIEW', 'COMPLETED'];
       const idx = flow.indexOf(status);
@@ -49,18 +44,15 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
       e.stopPropagation();
       const next = getNextStage(booking.status);
       
-      if (next === 'COMPLETED' && !isPaymentSettled(booking)) {
-          alert(`GATEKEEPER ALERT\n\nCannot move to COMPLETED.\nClient has outstanding balance.\nPlease settle payment in Finance tab first.`);
-          return;
-      }
-
+      // Note: Removed payment block to allow workflow flexibility (Term of Payment)
+      
       if (next && onUpdateBooking) {
           onUpdateBooking({ ...booking, status: next });
       }
   };
 
   const isOverdue = (booking: Booking) => {
-      if (booking.status === 'COMPLETED' || booking.status === 'CANCELLED') return false;
+      if (booking.status === 'COMPLETED' || booking.status === 'CANCELLED' || booking.status === 'REFUNDED') return false;
       
       // Smart Overdue Logic
       const bookingDate = new Date(booking.date);
@@ -104,11 +96,6 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
       if (id && onUpdateBooking) {
           const booking = bookings.find(b => b.id === id);
           if (booking && booking.status !== status) {
-              if (status === 'COMPLETED' && !isPaymentSettled(booking)) {
-                   alert(`GATEKEEPER ALERT\n\nCannot move to COMPLETED.\nClient has outstanding balance.\nPlease settle payment in Finance tab first.`);
-                   resetDragState();
-                   return;
-              }
               onUpdateBooking({ ...booking, status: status });
           }
       }
@@ -125,7 +112,7 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
   };
 
   const filteredBookings = bookings.filter(b => {
-      if (b.status === 'CANCELLED') return false; 
+      if (b.status === 'CANCELLED' || b.status === 'REFUNDED') return false; 
       if (filterMode === 'MINE' && currentUser) {
           return b.photographerId === currentUser.id || b.editorId === currentUser.id;
       }

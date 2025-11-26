@@ -1,7 +1,8 @@
 
+
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Booking, Role, TeamViewProps } from '../types';
+import { User, Booking, Role, TeamViewProps, PackageCostItem } from '../types';
 import { Mail, Phone, Calendar, Briefcase, Award, Circle, Plus, X, Trash2, Edit2, AlertCircle, DollarSign, TrendingUp, Coins, CalendarDays, Ban } from 'lucide-react';
 
 const Motion = motion as any;
@@ -32,21 +33,42 @@ const TeamView: React.FC<TeamViewProps> = ({ users, bookings, onAddUser, onUpdat
       return bookings.filter(b => (b.photographerId === userId || b.editorId === userId) && b.status !== 'COMPLETED' && b.status !== 'CANCELLED');
   }
 
-  // Calculate Revenue Generated
+  // Calculate Net Sales Generated (Profit Sharing Model)
   const getRevenueGenerated = (user: User) => {
       const completedBookings = bookings.filter(b => 
           (b.photographerId === user.id || b.editorId === user.id) && 
           b.status === 'COMPLETED'
       );
-      return completedBookings.reduce((acc, b) => acc + b.price, 0);
+      
+      return completedBookings.reduce((acc, b) => {
+          // 1. Get Gross
+          const gross = b.price;
+          
+          // 2. Deduct Discounts
+          let discountAmount = 0;
+          if (b.discount) {
+              discountAmount = b.discount.type === 'PERCENT' 
+                  ? gross * (b.discount.value / 100) 
+                  : b.discount.value;
+          }
+
+          // 3. Deduct COGS (Cost of Goods Sold) from Snapshot
+          const cogs = (b.costSnapshot || []).reduce((sum: number, cost: PackageCostItem) => sum + cost.amount, 0);
+          
+          // 4. Deduct Custom Item Costs
+          const itemCosts = (b.items || []).reduce((sum: number, item) => sum + (item.cost || 0), 0);
+
+          const netSales = Math.max(0, gross - discountAmount - cogs - itemCosts);
+          return acc + netSales;
+      }, 0);
   };
   
-  // Calculate Unpaid Commissions
+  // Calculate Unpaid Commissions based on Net Sales
   const getEstimatedCommission = (user: User) => {
       if (!user.commissionRate || user.commissionRate <= 0) return 0;
       
-      const revenue = getRevenueGenerated(user);
-      return revenue * (user.commissionRate / 100);
+      const netRevenue = getRevenueGenerated(user);
+      return netRevenue * (user.commissionRate / 100);
   };
 
   const openAddModal = () => {
@@ -214,7 +236,7 @@ const TeamView: React.FC<TeamViewProps> = ({ users, bookings, onAddUser, onUpdat
                          <div className="flex items-center justify-between">
                              <div className="flex items-center gap-2 text-xs text-lumina-muted">
                                  <TrendingUp size={12} className="text-emerald-400" />
-                                 <span>Revenue Generated</span>
+                                 <span>Net Sales (Profit)</span>
                              </div>
                              <span className="text-sm font-mono font-bold text-emerald-400">
                                  Rp {getRevenueGenerated(user).toLocaleString('id-ID', { notation: "compact" })}

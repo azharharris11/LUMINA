@@ -1,9 +1,10 @@
 
+
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { User, Account, Booking, ProjectStatus, Client, StudioConfig, BookingItem, Discount } from '../types';
+import { User, Account, Booking, ProjectStatus, Client, StudioConfig, BookingItem, Discount, Asset } from '../types';
 import { PACKAGES } from '../data';
-import { X, Calendar, Clock, User as UserIcon, AlertCircle, Search, ChevronDown, Plus, Timer, AlertTriangle, Star, History } from 'lucide-react';
+import { X, Calendar, Clock, User as UserIcon, AlertCircle, Search, ChevronDown, Plus, Timer, AlertTriangle, Star, History, Camera } from 'lucide-react';
 
 const Motion = motion as any;
 
@@ -14,6 +15,7 @@ interface NewBookingModalProps {
   accounts: Account[];
   bookings?: Booking[]; 
   clients?: Client[]; 
+  assets?: Asset[]; // Added assets prop
   config: StudioConfig; 
   onAddBooking?: (booking: Booking, paymentDetails?: { amount: number, accountId: string }) => void;
   onAddClient?: (client: Client) => void; 
@@ -21,7 +23,7 @@ interface NewBookingModalProps {
   googleToken?: string | null;
 }
 
-const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, photographers, accounts, bookings = [], clients = [], config, onAddBooking, onAddClient, initialData, googleToken }) => {
+const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, photographers, accounts, bookings = [], clients = [], assets = [], config, onAddBooking, onAddClient, initialData, googleToken }) => {
   const [formData, setFormData] = useState({
       clientName: '',
       clientPhone: '',
@@ -36,6 +38,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
       paymentAccount: accounts[0]?.id || ''
   });
 
+  const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [isLead, setIsLead] = useState(false); 
   const [discount, setDiscount] = useState<Discount>({ type: 'FIXED', value: 0 });
 
@@ -88,6 +91,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
           }
           setClientSearch('');
           setSelectedClient(null);
+          setSelectedAssetIds([]);
           setError(null);
           setProblematicWarning(null);
           setSoftConflictWarning(null);
@@ -138,7 +142,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
       }));
   };
 
-  const checkConflict = (): { type: 'ROOM' | 'PHOTOGRAPHER' | 'HOURS' | 'CLIENT', message: string, isSoft?: boolean } | null => {
+  const checkConflict = (): { type: 'ROOM' | 'PHOTOGRAPHER' | 'HOURS' | 'CLIENT' | 'ASSET', message: string, isSoft?: boolean } | null => {
       if (!formData.date || !formData.timeStart) return null;
       
       const newDurationMins = formData.durationMinutes;
@@ -173,7 +177,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
 
       for (const b of bookings) {
           if (b.date !== formData.date) continue;
-          if (b.status === 'CANCELLED') continue;
+          if (b.status === 'CANCELLED' || b.status === 'REFUNDED') continue;
 
           const [bStartH, bStartM] = b.timeStart.split(':').map(Number);
           const bStartTime = bStartH * 60 + bStartM;
@@ -203,6 +207,19 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
                       message: `Staff Conflict! ${photographerName} is already shooting for ${b.clientName} in ${b.studio} at this time.`,
                       isSoft: isSoftConflict
                   };
+              }
+
+              // ASSET CONFLICT CHECK
+              if (b.assetIds && b.assetIds.length > 0 && selectedAssetIds.length > 0) {
+                  const conflictingAssets = selectedAssetIds.filter(id => b.assetIds?.includes(id));
+                  if (conflictingAssets.length > 0) {
+                      const assetNames = conflictingAssets.map(id => assets.find(a => a.id === id)?.name).join(', ');
+                      return {
+                          type: 'ASSET',
+                          message: `Equipment Conflict! The following items are already in use: ${assetNames}`,
+                          isSoft: isSoftConflict
+                      }
+                  }
               }
 
               const isSamePhone = (b.clientPhone || '').replace(/\D/g,'') === (formData.clientPhone || '').replace(/\D/g,'');
@@ -357,7 +374,8 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
               timeLogs: [],
               costSnapshot: costSnapshot,
               taxSnapshot: config.taxRate, 
-              clientId: finalClientId 
+              clientId: finalClientId,
+              assetIds: selectedAssetIds 
           };
           
           if (newBooking.clientId === undefined) {
@@ -405,6 +423,12 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
       setShowClientSuggestions(false);
   };
 
+  const toggleAssetSelection = (assetId: string) => {
+      setSelectedAssetIds(prev => 
+          prev.includes(assetId) ? prev.filter(id => id !== assetId) : [...prev, assetId]
+      );
+  };
+
   const calculateFinal = () => {
       const base = formData.price;
       const discountAmount = discount.type === 'PERCENT' ? base * (discount.value/100) : discount.value;
@@ -414,7 +438,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
   
   const getClientStats = () => {
       if (!selectedClient) return null;
-      const history = bookings.filter(b => b.clientId === selectedClient.id);
+      const history = bookings.filter(b => b.clientId === selectedClient.id && b.status !== 'CANCELLED');
       const totalSpend = history.reduce((acc, b) => acc + b.price, 0);
       return { count: history.length, totalSpend };
   }
@@ -680,32 +704,55 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
                   </div>
                </div>
                
-               <div>
-                 <label className="block text-xs text-lumina-muted mb-1.5">Studio Room</label>
-                 <select 
-                     required
-                     className="w-full bg-lumina-base border border-lumina-highlight rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-lumina-accent"
-                     value={formData.studio}
-                     onChange={e => setFormData({...formData, studio: e.target.value})}
-                 >
-                     {studios.length > 0 ? studios.map(room => (
-                         <option key={room.id} value={room.name}>{room.name} ({room.type})</option>
-                     )) : <option value="">No studios configured</option>}
-                 </select>
+               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                   <div>
+                     <label className="block text-xs text-lumina-muted mb-1.5">Studio Room</label>
+                     <select 
+                         required
+                         className="w-full bg-lumina-base border border-lumina-highlight rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-lumina-accent"
+                         value={formData.studio}
+                         onChange={e => setFormData({...formData, studio: e.target.value})}
+                     >
+                         {studios.length > 0 ? studios.map(room => (
+                             <option key={room.id} value={room.name}>{room.name} ({room.type})</option>
+                         )) : <option value="">No studios configured</option>}
+                     </select>
+                   </div>
+
+                   <div>
+                     <label className="block text-xs text-lumina-muted mb-1.5">Photographer (Optional)</label>
+                     <select 
+                         className="w-full bg-lumina-base border border-lumina-highlight rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-lumina-accent"
+                         value={formData.photographerId}
+                         onChange={e => setFormData({...formData, photographerId: e.target.value})}
+                     >
+                         <option value="">Any Available</option>
+                         {photographers.map(p => (
+                             <option key={p.id} value={p.id}>{p.name}</option>
+                         ))}
+                     </select>
+                   </div>
                </div>
 
+               {/* Inventory Selection */}
                <div>
-                 <label className="block text-xs text-lumina-muted mb-1.5">Photographer (Optional)</label>
-                 <select 
-                     className="w-full bg-lumina-base border border-lumina-highlight rounded-lg px-3 py-2.5 text-white focus:outline-none focus:border-lumina-accent"
-                     value={formData.photographerId}
-                     onChange={e => setFormData({...formData, photographerId: e.target.value})}
-                 >
-                     <option value="">Any Available</option>
-                     {photographers.map(p => (
-                         <option key={p.id} value={p.id}>{p.name}</option>
-                     ))}
-                 </select>
+                   <label className="block text-xs text-lumina-muted mb-1.5 flex items-center gap-1"><Camera size={12} /> Reserved Equipment (Optional)</label>
+                   <div className="flex flex-wrap gap-2 bg-lumina-base border border-lumina-highlight rounded-lg p-3 max-h-24 overflow-y-auto custom-scrollbar">
+                       {assets.length > 0 ? assets.filter(a => !a.archived).map(asset => (
+                           <button
+                               key={asset.id}
+                               type="button"
+                               onClick={() => toggleAssetSelection(asset.id)}
+                               className={`text-xs px-2 py-1 rounded border transition-colors
+                                   ${selectedAssetIds.includes(asset.id) 
+                                       ? 'bg-lumina-accent text-lumina-base border-lumina-accent font-bold' 
+                                       : 'bg-lumina-surface text-lumina-muted border-lumina-highlight hover:border-lumina-accent/50'}
+                               `}
+                           >
+                               {asset.name}
+                           </button>
+                       )) : <span className="text-xs text-lumina-muted italic">No assets available in inventory.</span>}
+                   </div>
                </div>
             </section>
 
