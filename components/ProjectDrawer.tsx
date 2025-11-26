@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Booking, ProjectStatus, User, BookingFile, StudioConfig, Package, BookingItem, BookingTask, ActivityLog, Asset, BookingComment, Discount, TimeLog, Transaction, Account } from '../types';
@@ -28,7 +29,6 @@ const Motion = motion as any;
 const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking, photographer, onUpdateBooking, onDeleteBooking, bookings = [], config, packages = [], currentUser, assets = [], users = [], transactions = [], onAddTransaction, accounts = [] }) => {
   const [activeTab, setActiveTab] = useState<Tab>('OVERVIEW');
   
-  // Logistics Edit State
   const [isLogisticsEditing, setIsLogisticsEditing] = useState(false);
   const [logisticsForm, setLogisticsForm] = useState<{
       date: string;
@@ -38,30 +38,18 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       photographerId: string;
   }>({ date: '', timeStart: '', duration: 1, studio: '', photographerId: '' });
 
-  // Simulation States
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Line Items State (Now includes Cost/COGS)
   const [newLineItem, setNewLineItem] = useState<Partial<BookingItem>>({ description: '', quantity: 1, unitPrice: 0, cost: 0 });
-
-  // Discount State
   const [editDiscount, setEditDiscount] = useState<Discount>({ type: 'FIXED', value: 0 });
-
-  // Expense State
   const [newExpense, setNewExpense] = useState({ description: '', amount: 0, category: 'Production Cost', accountId: accounts[0]?.id || '' });
-
-  // Tasks State
   const [newTaskTitle, setNewTaskTitle] = useState('');
-
-  // Comment State
   const [newComment, setNewComment] = useState('');
   
-  // Conflict Error
   const [rescheduleError, setRescheduleError] = useState<string | null>(null);
   const [revenueWarning, setRevenueWarning] = useState<string | null>(null);
 
-  // --- TIME TRACKER STATE ---
   const [activeTimerStart, setActiveTimerStart] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerIntervalRef = useRef<number | null>(null);
@@ -82,21 +70,18 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       setEditDiscount(booking.discount || { type: 'FIXED', value: 0 });
       setNewExpense({ description: '', amount: 0, category: 'Production Cost', accountId: accounts[0]?.id || '' });
       
-      // Reset Timer State on open
       setActiveTimerStart(null);
       setElapsedSeconds(0);
       if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
     }
   }, [booking, isOpen]);
 
-  // Clean up interval
   useEffect(() => {
       return () => {
           if(timerIntervalRef.current) clearInterval(timerIntervalRef.current);
       }
   }, []);
 
-  // --- LOGGING HELPER ---
   const createLocalLog = (action: string, details?: string): ActivityLog => ({
       id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       timestamp: new Date().toISOString(),
@@ -113,8 +98,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // --- ADVANCED CONFLICT LOGIC ---
-
   const checkRescheduleConflict = () => {
       if (!bookings) return null;
       
@@ -123,26 +106,22 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       const newStartTime = startH * 60 + startM;
       const newEndTime = newStartTime + (logisticsForm.duration * 60);
 
-      // 1. Operating Hours Check
       const STUDIO_OPEN_HOUR = 8;
       const STUDIO_CLOSE_HOUR = 22;
       if (newStartTime < STUDIO_OPEN_HOUR * 60 || newEndTime > STUDIO_CLOSE_HOUR * 60) {
           return `Operating Hours: Studio is open from ${STUDIO_OPEN_HOUR}:00 to ${STUDIO_CLOSE_HOUR}:00`;
       }
 
-      // 2. Staff Status Check
       const staffMember = users.find(u => u.id === logisticsForm.photographerId);
       if (staffMember) {
           if (staffMember.status !== 'ACTIVE') {
               return `Staff Unavailable: ${staffMember.name} is currently marked as ${staffMember.status}`;
           }
-          // ROSTER CHECK
           if (staffMember.unavailableDates && staffMember.unavailableDates.includes(logisticsForm.date)) {
               return `Staff Unavailable: ${staffMember.name} has blocked this date (Off-day).`;
           }
       }
 
-      // 3. Overlap Check
       const others = bookings.filter(b => 
           b.id !== booking?.id && 
           b.date === logisticsForm.date && 
@@ -171,7 +150,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       return null;
   };
 
-  // --- ASSET AVAILABILITY ENGINE ---
   const getUnavailableAssets = useMemo(() => {
       if (!booking || !bookings) return new Map<string, string>(); 
 
@@ -207,7 +185,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       return unavailableMap;
   }, [bookings, booking, logisticsForm, isLogisticsEditing]);
 
-  // --- TIME TRACKER LOGIC ---
   const startTimer = () => {
       if (!activeTimerStart) {
           setActiveTimerStart(Date.now());
@@ -294,12 +271,10 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // --- LINE ITEMS LOGIC ---
   const addLineItem = () => {
       if (booking && newLineItem.description && newLineItem.unitPrice !== undefined) {
           let currentItems = [...(booking.items || [])];
 
-          // Legacy Migration: Convert Base Price to Item if needed
           if (currentItems.length === 0 && booking.price > 0) {
               currentItems.push({
                   id: `item-base-${booking.id}`,
@@ -307,7 +282,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                   quantity: 1,
                   unitPrice: booking.price,
                   total: booking.price,
-                  cost: 0 // Assuming base cost is tracked elsewhere for migration
+                  cost: 0 
               });
           }
 
@@ -364,7 +339,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   }
 
-  // --- EXPENSE LOGIC ---
   const handleAddExpense = () => {
       if (onAddTransaction && booking && newExpense.description && newExpense.amount > 0) {
           onAddTransaction({
@@ -378,7 +352,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   }
 
-  // --- ASSET ALLOCATION LOGIC ---
   const toggleAsset = (assetId: string, isBlocked: boolean) => {
       if (isBlocked) {
           alert("This asset is booked by another project at the same time.");
@@ -403,7 +376,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // --- TASKS LOGIC ---
   const toggleTask = (taskId: string) => {
       if (booking && booking.tasks) {
           const updatedTasks = booking.tasks.map(t => 
@@ -441,7 +413,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // --- COMMENTS LOGIC ---
   const addComment = () => {
       if (booking && newComment.trim()) {
           const comment: BookingComment = {
@@ -460,7 +431,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // --- CONTRACT LOGIC ---
   const signContract = () => {
       if (booking) {
           const log = createLocalLog('CONTRACT_SIGNED', 'Digital signature captured');
@@ -473,7 +443,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   }
 
-  // --- FILE LOGIC ---
   const handleFileUpload = () => {
       setIsUploading(true);
       setTimeout(() => {
@@ -495,7 +464,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }, 1500);
   };
 
-  // --- RENDER HELPERS ---
   const getTabStyle = (tab: Tab) => `px-4 py-3 text-sm font-bold border-b-2 transition-colors whitespace-nowrap ${activeTab === tab ? 'border-lumina-accent text-white' : 'border-transparent text-lumina-muted hover:text-white'}`;
   const getStatusColor = (status: ProjectStatus) => {
       switch(status) {
@@ -509,7 +477,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
 
   if (!isOpen || !booking) return null;
 
-  // Calculate Tax for Overview (Dynamic Calculation)
+  // Calculate Tax for Overview
   const currentItems = booking.items || [];
   const calculatedSubtotal = currentItems.length > 0 
       ? currentItems.reduce((acc, item) => acc + item.total, 0)
@@ -522,7 +490,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
 
   const subtotalAfterDiscount = Math.max(0, calculatedSubtotal - discountAmount);
 
-  // Use snapshot tax if available
   const taxRate = booking.taxSnapshot !== undefined ? booking.taxSnapshot : (config?.taxRate || 0);
   const taxAmount = subtotalAfterDiscount * (taxRate / 100);
   const grandTotal = subtotalAfterDiscount + taxAmount;
@@ -531,7 +498,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   const projectExpenses = transactions.filter(t => t.bookingId === booking.id && t.type === 'EXPENSE');
   const totalDirectExpenses = projectExpenses.reduce((acc, t) => acc + t.amount, 0);
 
-  // AUTOMATED COGS: PREFER SNAPSHOT, FALLBACK TO PACKAGE CURRENT SETTINGS
   let packageCostBreakdown: any[] = [];
   let isUsingSnapshot = false;
 
@@ -544,30 +510,28 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   }
   
   const totalBaseCost = packageCostBreakdown.reduce((acc, item) => acc + item.amount, 0);
-  
-  // Calculate costs from custom line items
   const totalCustomItemCost = currentItems.reduce((acc, item) => acc + (item.cost || 0), 0);
 
-  // Calculate Labor Costs (Commissions)
-  const photographerCommission = photographer?.commissionRate ? grandTotal * (photographer.commissionRate / 100) : 0;
+  // FIX: Calculate Labor Costs based on NET PROFIT, not Gross Revenue
+  // Net Sales Base = Revenue - COGS (Base Cost + Custom Item Cost + Direct Expenses)
+  const netSalesBase = Math.max(0, grandTotal - (totalBaseCost + totalCustomItemCost + totalDirectExpenses));
+
+  const photographerCommission = photographer?.commissionRate ? netSalesBase * (photographer.commissionRate / 100) : 0;
   let editorCommission = 0;
   if (booking.editorId) {
       const editor = users.find(u => u.id === booking.editorId);
       if (editor?.commissionRate) {
-          editorCommission = grandTotal * (editor.commissionRate / 100);
+          editorCommission = netSalesBase * (editor.commissionRate / 100);
       }
   }
   const totalLaborCost = photographerCommission + editorCommission;
   
-  // Adjusted Profit Formula: Revenue - (Direct Exp + Labor + Base Cost + Custom Item Cost)
   const totalCost = totalDirectExpenses + totalLaborCost + totalBaseCost + totalCustomItemCost;
   const netProfit = grandTotal - totalCost;
   const profitMargin = grandTotal > 0 ? (netProfit / grandTotal) * 100 : 0;
 
   const trackedMinutes = getTotalTrackedTime();
   const plannedMinutes = booking.duration * 60;
-  const isOverBudget = trackedMinutes > plannedMinutes;
-
   const canSeeProfit = currentUser?.role === 'OWNER' || currentUser?.role === 'FINANCE';
 
   return (
@@ -580,9 +544,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
         transition={{ type: 'spring', damping: 25, stiffness: 200 }}
         className="relative w-full max-w-2xl bg-lumina-surface border-l border-lumina-highlight h-full shadow-2xl flex flex-col"
       >
-        {/* HERO HEADER */}
         <div className="flex-none p-6 border-b border-lumina-highlight bg-lumina-base relative overflow-hidden">
-            {/* Background Accent */}
             <div className={`absolute top-0 right-0 w-64 h-64 blur-3xl opacity-10 rounded-full -mt-20 -mr-20 pointer-events-none 
                 ${booking.status === 'COMPLETED' ? 'bg-emerald-500' : booking.status === 'CANCELLED' ? 'bg-rose-500' : 'bg-lumina-accent'}`}>
             </div>
@@ -610,7 +572,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 </div>
             </div>
 
-            {/* Quick Actions Bar */}
             <div className="flex items-center gap-4 mt-6 relative z-10">
                  <div className="relative group">
                     <select 
@@ -645,7 +606,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
             </div>
         </div>
 
-        {/* Sticky Tabs */}
         <div className="flex-none bg-lumina-surface border-b border-lumina-highlight sticky top-0 z-20 shadow-lg">
             <div className="flex px-6 overflow-x-auto no-scrollbar">
                 <button onClick={() => setActiveTab('OVERVIEW')} className={getTabStyle('OVERVIEW')}>Overview</button>
@@ -659,15 +619,11 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
             </div>
         </div>
 
-        {/* Content */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-6 bg-lumina-surface">
             
-            {/* ... (OVERVIEW, DISCUSSION, TASKS, LOGS, CONTRACT, TIMELINE, MOODBOARD content remains same) ... */}
             {activeTab === 'OVERVIEW' && (
                 <div className="space-y-8">
-                    {/* Time & Logistics Grid */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {/* Time Tracking */}
                         <div className="bg-lumina-base border border-lumina-highlight rounded-xl p-4 flex flex-col justify-between">
                              <div className="flex justify-between items-start mb-4">
                                  <div>
@@ -693,7 +649,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                             )}
                         </div>
 
-                        {/* Logistics Summary */}
                         <div className="bg-lumina-base border border-lumina-highlight rounded-xl p-4 relative group">
                              <button 
                                 onClick={() => setIsLogisticsEditing(true)}
@@ -721,7 +676,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         </div>
                     </div>
 
-                    {/* Logistics Editor (Conditional) */}
                     <AnimatePresence>
                     {isLogisticsEditing && (
                         <Motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} exit={{ height: 0, opacity: 0 }} className="overflow-hidden">
@@ -762,7 +716,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                     )}
                     </AnimatePresence>
 
-                    {/* Equipment Allocation */}
                     <div className="bg-lumina-highlight/10 border border-lumina-highlight rounded-xl overflow-hidden">
                         <div className="p-3 border-b border-lumina-highlight bg-lumina-base/30 flex justify-between items-center">
                             <h3 className="font-bold text-white flex items-center gap-2 text-xs uppercase tracking-wider">
@@ -815,7 +768,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         </div>
                     </div>
 
-                    {/* Financials / Line Items - RECEIPT STYLE */}
                     <div className="bg-lumina-base border border-lumina-highlight rounded-xl overflow-hidden shadow-sm">
                         <div className="p-4 border-b border-lumina-highlight bg-lumina-base flex justify-between items-center">
                             <h3 className="font-bold text-white flex items-center gap-2 text-sm uppercase tracking-wider">
@@ -825,7 +777,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         </div>
                         
                         <div className="p-6 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] bg-fixed">
-                            {/* Items List */}
                             <div className="space-y-1 mb-6 font-mono text-xs">
                                 {(booking.items || []).length === 0 && (
                                     <div className="py-2 text-lumina-muted italic flex justify-between items-center border-b border-lumina-highlight/30 border-dashed">
@@ -847,7 +798,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                 ))}
                             </div>
 
-                            {/* Add Item Form */}
                             <div className="flex gap-2 items-end py-3 border-t border-b border-lumina-highlight/30 border-dashed mb-6">
                                 <div className="flex-1">
                                     <input 
@@ -889,7 +839,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                 <button onClick={addLineItem} disabled={!newLineItem.description} className="text-lumina-accent hover:text-white disabled:opacity-30"><Plus size={16}/></button>
                             </div>
 
-                            {/* Summary */}
                             <div className="space-y-1 text-xs font-mono">
                                 <div className="flex justify-between text-lumina-muted">
                                     <span>Subtotal</span>
@@ -943,7 +892,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 </div>
             )}
 
-             {/* --- PROFITABILITY TAB --- */}
              {activeTab === 'PROFITABILITY' && (
                 <div className="space-y-6">
                     <div className="bg-lumina-base border border-lumina-highlight rounded-xl p-4">
@@ -952,13 +900,11 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         </h3>
                         
                         <div className="space-y-4">
-                            {/* Revenue */}
                             <div className="flex justify-between items-center p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
                                 <span className="font-bold text-emerald-200">Total Revenue (Gross)</span>
                                 <span className="font-bold text-emerald-400 font-mono">Rp {grandTotal.toLocaleString()}</span>
                             </div>
 
-                            {/* Direct Expenses List */}
                             <div>
                                 <div className="flex justify-between items-center mb-2">
                                     <h4 className="text-xs font-bold text-lumina-muted uppercase">Direct Expenses (COGS)</h4>
@@ -969,7 +915,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                     )}
                                 </div>
                                 <div className="space-y-2">
-                                    {/* AUTOMATED COST BREAKDOWN */}
                                     {packageCostBreakdown.length > 0 && packageCostBreakdown.map((item) => (
                                         <div key={item.id} className="flex justify-between items-center text-xs text-lumina-muted border-b border-lumina-highlight/50 pb-1">
                                             <span className="flex items-center gap-1">
@@ -984,7 +929,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                         </div>
                                     ))}
 
-                                    {/* Additional Manual Expenses */}
                                     {projectExpenses.map(t => (
                                         <div key={t.id} className="flex justify-between items-center text-xs text-lumina-muted border-b border-lumina-highlight/50 pb-1">
                                             <span className="flex items-center gap-1">
@@ -995,7 +939,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                         </div>
                                     ))}
 
-                                    {/* Custom Item Costs */}
                                     {currentItems.filter(i => i.cost && i.cost > 0).map(item => (
                                         <div key={`cost-${item.id}`} className="flex justify-between items-center text-xs text-lumina-muted border-b border-lumina-highlight/50 pb-1">
                                             <span className="flex items-center gap-1">
@@ -1014,7 +957,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                 </div>
                             </div>
 
-                            {/* Add Expense Form */}
                             <div className="bg-lumina-highlight/10 p-3 rounded-lg border border-lumina-highlight/30">
                                 <h4 className="text-[10px] font-bold text-lumina-muted uppercase mb-2">Record Extra Expense</h4>
                                 <div className="grid grid-cols-2 gap-2 mb-2">
@@ -1050,9 +992,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                 </div>
                             </div>
 
-                            {/* Labor Costs */}
                             <div>
-                                <h4 className="text-xs font-bold text-lumina-muted uppercase mb-2">Estimated Commissions</h4>
+                                <h4 className="text-xs font-bold text-lumina-muted uppercase mb-2">Estimated Commissions (Net Sales Basis)</h4>
                                 <div className="space-y-2">
                                     <div className="flex justify-between items-center text-xs text-lumina-muted border-b border-lumina-highlight/50 pb-1">
                                         <span>Photographer ({photographer?.commissionRate || 0}%)</span>
@@ -1071,7 +1012,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                 </div>
                             </div>
 
-                            {/* Net Profit */}
                             <div className="pt-4 border-t border-lumina-highlight">
                                 <div className="flex justify-between items-center">
                                     <span className="text-sm font-bold text-white">Net Profit</span>
@@ -1090,7 +1030,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 </div>
             )}
             
-            {/* ... other tabs ... */}
             {activeTab === 'DISCUSSION' && (
                 <div className="h-full flex flex-col">
                     <div className="flex-1 overflow-y-auto custom-scrollbar space-y-4 mb-4">
@@ -1134,8 +1073,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 </div>
             )}
 
-             {/* ... remaining tabs ... */}
-              {/* --- TASKS TAB --- */}
             {activeTab === 'TASKS' && (
                 <div className="space-y-6">
                     <div className="p-4 bg-gradient-to-r from-lumina-highlight to-lumina-base rounded-xl border border-lumina-highlight">
@@ -1205,7 +1142,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 </div>
             )}
 
-            {/* --- LOGS TAB --- */}
             {activeTab === 'LOGS' && (
                 <div className="space-y-6">
                     <h3 className="font-bold text-white flex items-center gap-2 mb-4">
@@ -1241,7 +1177,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                     </div>
                 </div>
             )}
-             {/* --- CONTRACT TAB --- */}
             {activeTab === 'CONTRACT' && (
                 <div className="h-full flex flex-col items-center justify-center text-center p-8 border border-dashed border-lumina-highlight rounded-xl bg-lumina-base/30">
                     <FileSignature size={48} className={`mb-4 ${booking.contractStatus === 'SIGNED' ? 'text-emerald-500' : 'text-lumina-muted'}`} />
@@ -1264,7 +1199,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                     )}
                 </div>
             )}
-             {/* --- TIMELINE / FILES TAB --- */}
              {activeTab === 'TIMELINE' && (
                 <div className="space-y-4">
                      <div className="flex justify-between items-center mb-4">
@@ -1311,7 +1245,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                      </div>
                 </div>
             )}
-            {/* --- MOODBOARD TAB --- */}
             {activeTab === 'MOODBOARD' && (
                 <div className="grid grid-cols-2 gap-4">
                     {(booking.moodboard || []).map((url, idx) => (

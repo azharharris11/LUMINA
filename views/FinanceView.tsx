@@ -1,3 +1,4 @@
+
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -14,13 +15,10 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
   const [showExpenseModal, setShowExpenseModal] = useState(false);
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'INVOICES' | 'EXPENSES' | 'LEDGER'>('OVERVIEW');
   
-  // Invoice Filter State
   const [invoiceFilter, setInvoiceFilter] = useState<'UNPAID' | 'PAID'>('UNPAID');
 
-  // Transfer State
   const [transferForm, setTransferForm] = useState({ fromId: accounts[1]?.id || '', toId: accounts[0]?.id || '', amount: '' });
 
-  // Expense Form State
   const [expenseForm, setExpenseForm] = useState({
       description: '',
       amount: '',
@@ -28,29 +26,21 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
       accountId: accounts[0]?.id || ''
   });
 
-  // Invoice & WA Modal States
   const [selectedBookingForInvoice, setSelectedBookingForInvoice] = useState<any | null>(null);
   const [selectedBookingForWA, setSelectedBookingForWA] = useState<any | null>(null);
   
-  // Settle Payment State
   const [settleForm, setSettleForm] = useState<{ bookingId: string | null, amount: number, maxAmount: number, currentPaidAmount: number, accountId: string }>({
       bookingId: null, amount: 0, maxAmount: 0, currentPaidAmount: 0, accountId: accounts[0]?.id || ''
   });
 
-  // --- DERIVED DATA ---
-  
-  // Logic Fix: Accounts Receivable must include Tax
   const getBookingFinancials = (b: any) => {
-      // Use snapshot if available, else fallback to config (for legacy data)
       const applicableTaxRate = b.taxSnapshot !== undefined ? b.taxSnapshot : (config.taxRate || 0);
       
-      // Recalculate based on items if available, else flat price
       let subtotal = b.price;
       if (b.items && b.items.length > 0) {
           subtotal = b.items.reduce((acc: number, item: any) => acc + item.total, 0);
       }
 
-      // Apply Discount
       let discountAmount = 0;
       if (b.discount) {
           discountAmount = b.discount.type === 'PERCENT' 
@@ -67,7 +57,7 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
 
   const unpaidBookings = bookings.filter(b => {
       const { dueAmount } = getBookingFinancials(b);
-      return dueAmount > 100 && b.status !== 'CANCELLED'; // Tolerance of 100 rupiah
+      return dueAmount > 100 && b.status !== 'CANCELLED'; 
   });
 
   const paidBookings = bookings.filter(b => {
@@ -77,10 +67,8 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
 
   const totalReceivable = unpaidBookings.reduce((sum, b) => sum + getBookingFinancials(b).dueAmount, 0);
   
-  // Determine which list to show
   const displayBookings = invoiceFilter === 'UNPAID' ? unpaidBookings : paidBookings;
 
-  // Dynamic Expense Breakdown
   const expenseBreakdown = useMemo(() => {
       const breakdown = new Map<string, number>();
       
@@ -92,7 +80,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
             breakdown.set(cat, prev + t.amount);
         });
 
-      // Colors for charts
       const colors = ['#f43f5e', '#f59e0b', '#3b82f6', '#a855f7', '#10b981', '#6366f1'];
       const data = Array.from(breakdown.entries()).map(([name, value], index) => ({
           name,
@@ -100,14 +87,12 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
           color: colors[index % colors.length]
       }));
 
-      // If no data, provide a placeholder so chart doesn't break
       if (data.length === 0) return [{ name: 'No Data', value: 1, color: '#333' }];
       return data;
   }, [transactions]);
   
   const totalExpense = transactions.filter(t => t.type === 'EXPENSE').reduce((acc, t) => acc + t.amount, 0);
 
-  // Custom Tooltip for Charts
   const CustomTooltip = ({ active, payload, label }: any) => {
     if (active && payload && payload.length) {
       return (
@@ -144,19 +129,16 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
 
   const handleSettleSubmit = () => {
       if (onSettleBooking && settleForm.bookingId) {
-          
-          // VALIDATION 1: Ensure not overpaying (Positive)
           if (settleForm.amount > 0 && settleForm.amount > settleForm.maxAmount) {
               alert("Amount exceeds remaining balance!");
               return;
           }
-          // VALIDATION 2: Ensure not over-refunding (Negative)
           if (settleForm.amount < 0 && Math.abs(settleForm.amount) > settleForm.currentPaidAmount) {
               alert("Refund amount cannot exceed the total amount already paid!");
               return;
           }
 
-          // VALIDATION 3 (NEW): Ensure Account has sufficient balance for Refund
+          // VALIDATION: Ensure Account has sufficient balance for Refund
           if (settleForm.amount < 0) {
               const sourceAccount = accounts.find(a => a.id === settleForm.accountId);
               if (sourceAccount && sourceAccount.balance < Math.abs(settleForm.amount)) {
@@ -175,7 +157,7 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
       const rows = transactions.map(t => [
           t.id,
           new Date(t.date).toLocaleString(),
-          (t.description || '').replace(/,/g, ''), // Escape commas, with fallback
+          (t.description || '').replace(/,/g, ''),
           t.category,
           t.amount,
           t.type,
@@ -227,7 +209,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
         </div>
       </div>
 
-      {/* Navigation Tabs */}
       <div className="flex border-b border-lumina-highlight shrink-0 overflow-x-auto">
         {[
             { id: 'OVERVIEW', label: 'Overview', icon: Wallet },
@@ -251,14 +232,11 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
         ))}
       </div>
 
-      {/* Main Content Area */}
       <div className="flex-1 overflow-y-auto custom-scrollbar pr-2">
       <AnimatePresence mode="wait">
         
-        {/* === OVERVIEW TAB === */}
         {activeTab === 'OVERVIEW' && (
             <Motion.div key="overview" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="space-y-6">
-                {/* Account Cards */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                     {accounts.map((acc) => (
                     <Motion.div 
@@ -289,7 +267,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                     ))}
                 </div>
 
-                {/* Cash Flow Health & P&L */}
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                     <div className="lg:col-span-2 bg-lumina-surface border border-lumina-highlight rounded-2xl p-6">
                         <div className="flex justify-between items-center mb-6">
@@ -323,7 +300,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                     </div>
 
                     <div className="space-y-6">
-                         {/* Receivables Summary Card */}
                          <div className="bg-gradient-to-br from-lumina-surface to-indigo-900/10 border border-lumina-highlight p-6 rounded-2xl">
                              <div className="flex items-center gap-3 mb-4">
                                  <div className="p-2 bg-indigo-500/20 rounded-lg text-indigo-400">
@@ -339,7 +315,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                              </div>
                          </div>
 
-                         {/* Quick Guide */}
                          <div className="bg-lumina-surface border border-lumina-highlight p-6 rounded-2xl">
                              <h3 className="font-bold text-white text-sm uppercase tracking-wider mb-2 text-lumina-muted">Finance Tips</h3>
                              <p className="text-xs text-lumina-muted leading-relaxed">
@@ -351,8 +326,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
             </Motion.div>
         )}
 
-        {/* ... (Rest of the file is identical, just closing the component) */}
-        {/* === INVOICES TAB === */}
         {activeTab === 'INVOICES' && (
             <Motion.div key="invoices" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
                 <div className="flex justify-between items-center bg-lumina-surface border border-lumina-highlight p-4 rounded-xl">
@@ -360,7 +333,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                         <h2 className="text-xl font-bold text-white">Invoice Management</h2>
                         <p className="text-sm text-lumina-muted">Track outstanding payments and paid history.</p>
                     </div>
-                    {/* Filter Toggle */}
                     <div className="flex bg-lumina-base p-1 rounded-lg border border-lumina-highlight">
                         <button 
                             onClick={() => setInvoiceFilter('UNPAID')}
@@ -377,11 +349,9 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                     </div>
                 </div>
 
-                {/* Invoice Grid */}
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                     {displayBookings.map((booking) => {
                         const { grandTotal, dueAmount } = getBookingFinancials(booking);
-                        // Guard against zero division if grandTotal is 0 (e.g. fully discounted)
                         const percentagePaid = grandTotal > 0 ? (booking.paidAmount / grandTotal) * 100 : 100;
                         const isFullyPaid = dueAmount <= 100;
 
@@ -460,11 +430,9 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
             </Motion.div>
         )}
 
-        {/* === EXPENSES TAB === */}
         {activeTab === 'EXPENSES' && (
             <Motion.div key="expenses" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6">
                 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    {/* Donut Chart */}
                     <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6 flex flex-col items-center justify-center relative">
                         <h3 className="absolute top-6 left-6 font-bold text-white">Cost Breakdown</h3>
                         <div className="w-full h-[300px]">
@@ -484,7 +452,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                                     <Tooltip contentStyle={{ backgroundColor: '#1c1917', borderColor: '#292524', borderRadius: '8px', color: '#fff' }} formatter={(value: number) => `Rp ${value.toLocaleString()}`} />
                                 </PieChart>
                             </ResponsiveContainer>
-                            {/* Center Text */}
                             <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none mt-4">
                                 <span className="text-xs text-lumina-muted uppercase tracking-wider">Total Exp</span>
                                 <span className="text-2xl font-bold text-white">Rp {(totalExpense / 1000000).toFixed(1)}M</span>
@@ -492,7 +459,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                         </div>
                     </div>
 
-                    {/* Breakdown List */}
                     <div className="space-y-4">
                          <h3 className="font-bold text-white mb-4">Categories</h3>
                          {expenseBreakdown.length > 0 && expenseBreakdown[0].name !== 'No Data' ? (
@@ -528,7 +494,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
             </Motion.div>
         )}
 
-        {/* === LEDGER TAB === */}
         {activeTab === 'LEDGER' && (
             <Motion.div key="ledger" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
                 <div className="flex justify-between items-center bg-lumina-surface p-4 rounded-xl border border-lumina-highlight">
@@ -608,7 +573,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
       </AnimatePresence>
       </div>
 
-      {/* Transfer Modal */}
       {showTransferModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <Motion.div 
@@ -681,7 +645,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
         </div>
       )}
 
-      {/* Record Expense Modal */}
       {showExpenseModal && (
         <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
           <Motion.div 
@@ -766,7 +729,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
         </div>
       )}
       
-      {/* Settle Payment Modal */}
       {settleForm.bookingId && (
           <div className="fixed inset-0 bg-black/80 backdrop-blur-sm z-[100] flex items-center justify-center p-4">
             <Motion.div 
@@ -789,17 +751,14 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                            <span className="absolute left-3 top-3 text-lumina-muted font-bold">Rp</span>
                            <input 
                                 type="number" 
-                                // Removed min="0" to allow refunds
                                 value={settleForm.amount}
                                 onChange={e => setSettleForm({...settleForm, amount: Number(e.target.value)})}
                                 className="w-full bg-lumina-base border border-lumina-highlight rounded-lg p-3 pl-10 text-white font-mono focus:outline-none focus:border-lumina-accent"
                            />
                         </div>
-                        {/* Positive Overflow Error */}
                         {settleForm.amount > settleForm.maxAmount && (
                             <p className="text-[10px] text-rose-500 mt-1">Amount exceeds remaining balance.</p>
                         )}
-                        {/* Negative Overflow Error (Refund > Paid) */}
                         {settleForm.amount < 0 && Math.abs(settleForm.amount) > settleForm.currentPaidAmount && (
                             <p className="text-[10px] text-rose-500 mt-1">Refund exceeds total paid amount (Rp {settleForm.currentPaidAmount.toLocaleString()}).</p>
                         )}
@@ -814,7 +773,7 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
                             onChange={e => setSettleForm({...settleForm, accountId: e.target.value})}
                             className="w-full bg-lumina-base border border-lumina-highlight rounded-lg p-3 text-white focus:outline-none focus:border-lumina-accent"
                         >
-                            {accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                            {accounts.map(a => <option key={a.id} value={a.id}>{a.name} (Rp {a.balance.toLocaleString()})</option>)}
                         </select>
                     </div>
                </div>
@@ -837,7 +796,6 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
           </div>
       )}
 
-      {/* NEW MODALS */}
       <InvoiceModal 
         isOpen={!!selectedBookingForInvoice}
         onClose={() => setSelectedBookingForInvoice(null)}

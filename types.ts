@@ -13,8 +13,9 @@ export interface User {
   specialization?: string; 
   commissionRate?: number; 
   joinedDate: string; 
-  unavailableDates?: string[]; // New: Rostering / Blocked Dates
+  unavailableDates?: string[]; 
   ownerId?: string;
+  studioId?: string; // NEW: Links staff to the Studio Owner's data
 }
 
 // ... (Keep all existing interfaces exactly as they are until SidebarProps) ...
@@ -46,7 +47,7 @@ export interface BookingItem {
   description: string;
   quantity: number;
   unitPrice: number;
-  cost?: number; // NEW: Cost of Goods Sold for this specific item
+  cost?: number; 
   total: number;
 }
 
@@ -80,7 +81,7 @@ export interface TimeLog {
   userName: string;
   startTime: string;
   endTime?: string;
-  durationMinutes: number; // calculated on stop
+  durationMinutes: number; 
   notes?: string;
 }
 
@@ -130,7 +131,7 @@ export interface Booking {
   timeLogs?: TimeLog[];
   
   costSnapshot?: PackageCostItem[];
-  taxSnapshot?: number; // NEW: Snapshot of tax rate at time of booking
+  taxSnapshot?: number; 
   ownerId?: string;
 }
 
@@ -179,6 +180,8 @@ export interface Package {
   features: string[];
   active: boolean;
   costBreakdown: PackageCostItem[]; 
+  turnaroundDays?: number; 
+  archived?: boolean; 
   ownerId?: string;
 }
 
@@ -329,11 +332,23 @@ export interface StudioConfig {
   address: string;
   phone: string;
   website: string;
+  
+  // Financial Policy
   taxRate: number; 
   bankName: string;
   bankAccount: string;
   bankHolder: string;
+  requiredDownPaymentPercentage?: number; // NEW: e.g., 50%
+  paymentDueDays?: number; // NEW: Days relative to session (0 = day of, -1 = day before)
+
+  // Scheduling Policy
+  operatingHoursStart: string; // NEW: "09:00"
+  operatingHoursEnd: string; // NEW: "18:00"
   bufferMinutes: number; 
+  
+  // Production Policy
+  defaultTurnaroundDays?: number; // NEW: e.g., 7 days
+
   logoUrl?: string;
   npwp?: string;
   invoiceFooter?: string;
@@ -369,7 +384,6 @@ export interface SettingsViewProps {
   onUpdateConfig?: (config: StudioConfig) => void;
   bookings?: Booking[]; 
   currentUser?: User; 
-  // NEW: Profile Management Handlers
   onUpdateUserProfile?: (user: User) => Promise<void>;
   onDeleteAccount?: () => Promise<void>;
 }
@@ -435,6 +449,7 @@ export interface NewBookingModalProps {
   clients?: Client[]; 
   config: StudioConfig; 
   onAddBooking?: (booking: Booking, paymentDetails?: { amount: number, accountId: string }) => void;
+  onAddClient?: (client: Client) => void;
   initialData?: { date: string, time: string, studio: string };
 }
 

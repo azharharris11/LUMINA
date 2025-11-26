@@ -1,3 +1,5 @@
+
+
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Account, Booking, ProjectStatus, Client, StudioRoom, StudioConfig, BookingItem, Discount } from '../types';
@@ -15,7 +17,7 @@ interface NewBookingModalProps {
   clients?: Client[]; 
   config: StudioConfig; 
   onAddBooking?: (booking: Booking, paymentDetails?: { amount: number, accountId: string }) => void;
-  onAddClient?: (client: Client) => void; // NEW PROP
+  onAddClient?: (client: Client) => void; 
   initialData?: { date: string, time: string, studio: string };
 }
 
@@ -25,49 +27,63 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
       clientPhone: '',
       date: '',
       timeStart: '',
-      package: PACKAGES[0].name,
-      price: PACKAGES[0].price, 
-      durationMinutes: PACKAGES[0].duration * 60, // Track duration in minutes
+      package: '',
+      price: 0, 
+      durationMinutes: 60, 
       studio: '', 
       photographerId: '',
       amountPaid: 0,
       paymentAccount: accounts[0]?.id
   });
 
-  const [isLead, setIsLead] = useState(false); // New state for Lead/Inquiry
+  const [isLead, setIsLead] = useState(false); 
   const [discount, setDiscount] = useState<Discount>({ type: 'FIXED', value: 0 });
 
   const [clientSearch, setClientSearch] = useState('');
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
-  const [selectedClient, setSelectedClient] = useState<Client | null>(null); // Track full client obj
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null); 
 
   const [error, setError] = useState<string | null>(null);
-  const [softConflictWarning, setSoftConflictWarning] = useState<string | null>(null); // NEW
+  const [softConflictWarning, setSoftConflictWarning] = useState<string | null>(null); 
   const [problematicWarning, setProblematicWarning] = useState<string | null>(null);
-  const [adminOverride, setAdminOverride] = useState(false); // State for override toggle
-  const [softBookingOverride, setSoftBookingOverride] = useState(false); // NEW
+  const [adminOverride, setAdminOverride] = useState(false); 
+  const [softBookingOverride, setSoftBookingOverride] = useState(false); 
   
-  // CONSTANTS FOR BUSINESS LOGIC
   const BUFFER_MINUTES = config.bufferMinutes || 15; 
-  const STUDIO_OPEN_HOUR = 8;
-  const STUDIO_CLOSE_HOUR = 22;
   const studios = config.rooms || [];
+
+  // Filter Active Packages Only
+  const activePackages = PACKAGES.filter(p => p.active && !p.archived);
 
   useEffect(() => {
       if (isOpen) {
+          const defaultPkg = activePackages[0];
+          const defaultPrice = defaultPkg ? defaultPkg.price : 0;
+          // Auto-calc DP on open
+          const dpPercentage = config.requiredDownPaymentPercentage || 50;
+          const initialDP = defaultPrice * (dpPercentage / 100);
+
           if (initialData) {
               setFormData(prev => ({
                   ...prev,
                   date: initialData.date,
                   timeStart: initialData.time,
-                  studio: initialData.studio
+                  studio: initialData.studio,
+                  package: defaultPkg ? defaultPkg.name : '',
+                  price: defaultPrice,
+                  durationMinutes: defaultPkg ? defaultPkg.duration * 60 : 60,
+                  amountPaid: initialDP
               }));
           } else {
               setFormData(prev => ({
                  ...prev,
                  date: new Date().toISOString().split('T')[0],
                  timeStart: '10:00',
-                 studio: studios[0]?.name || ''
+                 studio: studios[0]?.name || '',
+                 package: defaultPkg ? defaultPkg.name : '',
+                 price: defaultPrice,
+                 durationMinutes: defaultPkg ? defaultPkg.duration * 60 : 60,
+                 amountPaid: initialDP
               }));
           }
           setClientSearch('');
@@ -82,7 +98,6 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
       }
   }, [isOpen, initialData, studios]);
 
-  // Watch client name for problematic check
   useEffect(() => {
       if (formData.clientName) {
           const matchedClient = clients.find(c => c.name.toLowerCase() === formData.clientName.toLowerCase());
@@ -107,12 +122,19 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
   }, [formData.clientName, clients]);
 
   const handlePackageChange = (pkgName: string) => {
-      const pkg = PACKAGES.find(p => p.name === pkgName);
+      const pkg = activePackages.find(p => p.name === pkgName);
+      const newPrice = pkg ? pkg.price : formData.price;
+      
+      // Auto-Calculate DP based on config policy
+      const dpPercentage = config.requiredDownPaymentPercentage || 50;
+      const newDP = newPrice * (dpPercentage / 100);
+
       setFormData(prev => ({
           ...prev,
           package: pkgName,
-          price: pkg ? pkg.price : prev.price,
-          durationMinutes: pkg ? pkg.duration * 60 : prev.durationMinutes
+          price: newPrice,
+          durationMinutes: pkg ? pkg.duration * 60 : prev.durationMinutes,
+          amountPaid: newDP
       }));
   };
 
@@ -124,13 +146,18 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
       const [startH, startM] = formData.timeStart.split(':').map(Number);
       const newStartTime = startH * 60 + startM;
       const newEndTime = newStartTime + newDurationMins;
-      const closeTime = STUDIO_CLOSE_HOUR * 60;
-      const openTime = STUDIO_OPEN_HOUR * 60;
+      
+      // Dynamic Hours from Config
+      const [openH, openM] = (config.operatingHoursStart || "09:00").split(':').map(Number);
+      const [closeH, closeM] = (config.operatingHoursEnd || "21:00").split(':').map(Number);
+      
+      const openTime = openH * 60 + openM;
+      const closeTime = closeH * 60 + closeM;
 
       if (newStartTime < openTime || newEndTime > closeTime) {
           return { 
               type: 'HOURS', 
-              message: `Booking is outside operating hours (${STUDIO_OPEN_HOUR}:00 - ${STUDIO_CLOSE_HOUR}:00).` 
+              message: `Booking is outside operating hours (${config.operatingHoursStart} - ${config.operatingHoursEnd}).` 
           };
       }
 
@@ -152,19 +179,21 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
           const bStartTime = bStartH * 60 + bStartM;
           const bEndTime = bStartTime + (b.duration * 60);
 
-          const bStartWithBuffer = bStartTime - BUFFER_MINUTES;
+          // Improved Buffer Logic: Only add buffer after a session (Cleanup Time)
+          // Avoid double-sided buffer which wastes time slots
           const bEndWithBuffer = bEndTime + BUFFER_MINUTES;
 
-          const isOverlapping = (newStartTime < bEndWithBuffer) && (newEndTime > bStartWithBuffer);
+          // Conflict Formula: (StartA < EndB) and (EndA > StartB)
+          // My Start < Their End (with buffer) AND My End > Their Start
+          const isOverlapping = (newStartTime < bEndWithBuffer) && (newEndTime > bStartTime);
 
           if (isOverlapping) {
-              // Soft Booking Check: If existing booking is INQUIRY, allow override with warning
               const isSoftConflict = b.status === 'INQUIRY';
 
               if (b.studio === formData.studio) {
                   return {
                       type: 'ROOM',
-                      message: `Studio Conflict! ${b.studio} is booked by ${b.clientName} (${b.timeStart} - ${formatTime(bEndTime)}). ${isSoftConflict ? 'Existing booking is just an Inquiry.' : ''}`,
+                      message: `Studio Conflict! ${b.studio} is booked by ${b.clientName} (${b.timeStart} - ${formatTime(bEndTime)} + buffer). ${isSoftConflict ? 'Existing booking is just an Inquiry.' : ''}`,
                       isSoft: isSoftConflict
                   };
               }
@@ -216,7 +245,6 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
                   setSoftConflictWarning(`SOFT CONFLICT: ${conflict.message}\nYou can override this because the existing booking is only an Inquiry.`);
                   return;
               }
-              // If overridden, proceed
           } else {
               setError(conflict.message);
               return;
@@ -239,27 +267,23 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
               }
           ];
           
-          // FINANCIAL SNAPSHOT
-          const selectedPackage = PACKAGES.find(p => p.name === formData.package);
+          const selectedPackage = activePackages.find(p => p.name === formData.package);
           const costSnapshot = selectedPackage ? [...selectedPackage.costBreakdown] : [];
 
-          // SAFEGUARD: Ensure photographerId is never undefined
           let safePhotographerId = formData.photographerId;
           if (!safePhotographerId && photographers.length > 0) {
               safePhotographerId = photographers[0].id;
           }
           if (!safePhotographerId) safePhotographerId = ''; 
 
-          // CLIENT HANDLING: Auto-create if new
           let finalClientId = selectedClient?.id;
           
           if (!finalClientId && formData.clientName) {
-              // New Client Creation Logic
               const newClient: Client = {
                   id: `c-${Date.now()}`,
                   name: formData.clientName,
                   phone: formData.clientPhone,
-                  email: '', // Can be updated later
+                  email: '', 
                   category: 'NEW',
                   notes: 'Auto-created from booking',
                   joinedDate: new Date().toISOString().split('T')[0],
@@ -291,8 +315,8 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
               comments: [],
               timeLogs: [],
               costSnapshot: costSnapshot,
-              taxSnapshot: config.taxRate, // SNAPSHOT TAX RATE
-              clientId: finalClientId // Link the ID
+              taxSnapshot: config.taxRate, 
+              clientId: finalClientId 
           };
           
           if (newBooking.clientId === undefined) {
@@ -438,7 +462,6 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
                  <UserIcon size={14} className="mr-2" /> Client Information
                </h3>
                
-               {/* Client Insight Card */}
                <AnimatePresence>
                    {selectedClient && clientStats && (
                        <Motion.div 
@@ -573,9 +596,9 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
                             value={formData.package}
                             onChange={e => handlePackageChange(e.target.value)}
                         >
-                            {PACKAGES.filter(p => p.active).map(pkg => (
+                            {activePackages.length > 0 ? activePackages.map(pkg => (
                                 <option key={pkg.id} value={pkg.name}>{pkg.name}</option>
-                            ))}
+                            )) : <option value="">No active packages</option>}
                         </select>
                         <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 text-lumina-muted w-4 h-4 pointer-events-none" />
                     </div>
@@ -672,7 +695,12 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
                </h3>
                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div>
-                      <label className="block text-xs text-lumina-muted mb-1.5">Amount Paid (DP)</label>
+                      <label className="block text-xs text-lumina-muted mb-1.5 flex items-center gap-1">
+                          Amount Paid (DP) 
+                          <span className="text-[9px] text-emerald-400 bg-emerald-500/10 px-1 rounded border border-emerald-500/20">
+                              {config.requiredDownPaymentPercentage || 50}% Req
+                          </span>
+                      </label>
                       <div className="relative">
                           <span className="absolute left-3 top-2.5 text-lumina-muted font-bold">Rp</span>
                           <input 

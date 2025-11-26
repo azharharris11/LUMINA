@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import AppLauncher from './components/AppLauncher';
@@ -20,7 +21,7 @@ import ProjectDrawer from './components/ProjectDrawer';
 import { USERS, ACCOUNTS as INITIAL_ACCOUNTS, BOOKINGS as INITIAL_BOOKINGS, ASSETS as INITIAL_ASSETS, TRANSACTIONS as INITIAL_TRANSACTIONS, PACKAGES as INITIAL_PACKAGES, CLIENTS as INITIAL_CLIENTS, NOTIFICATIONS, STUDIO_CONFIG as INITIAL_CONFIG } from './data';
 import { User, Booking, Asset, Notification, Account, Transaction, Client, Package, StudioConfig, BookingTask, ActivityLog, PublicBookingSubmission, StudioRoom } from './types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Check, Info, AlertTriangle, Search, Database, CheckCheck, Trash, WifiOff, Cloud, ShieldAlert, ExternalLink, X, RefreshCcw } from 'lucide-react';
+import { Bell, Check, Info, AlertTriangle, Search, Database, CheckCheck, Trash, WifiOff, Cloud, ShieldAlert, ExternalLink, X, RefreshCcw, Plus } from 'lucide-react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
 import { doc, getDoc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, query, where, writeBatch, increment } from 'firebase/firestore';
@@ -111,6 +112,9 @@ const App: React.FC = () => {
       return saved ? saved === 'dark' : true;
   });
 
+  // GOOGLE INTEGRATION STATE
+  const [googleToken, setGoogleToken] = useState<string | null>(null);
+
   // Date State for Calendar & Dashboard
   const [viewDate, setViewDate] = useState(new Date().toISOString().split('T')[0]);
 
@@ -133,8 +137,8 @@ const App: React.FC = () => {
 
   // Derived Data
   const selectedBooking = bookings.find(b => b.id === selectedBookingId) || null;
-  // In single-owner SaaS mode, active photographers are just the owner + any invited staff (future feature)
-  // For now, we show the current user as the photographer option
+  
+  // STAFF LOGIC: The user list should come from the 'users' collection where ownerId matches current studio
   const activePhotographers = users.length > 0 ? users : [currentUser];
 
   // Key Bindings
@@ -152,9 +156,9 @@ const App: React.FC = () => {
   // Connection Check
   const checkConnection = async () => {
       try {
-          // Check user specific config doc
-          if (currentUser.id) {
-             await getDoc(doc(db, "studios", currentUser.id));
+          const targetId = currentUser.studioId || currentUser.id;
+          if (targetId) {
+             await getDoc(doc(db, "studios", targetId));
           }
           setIsOfflineMode(false);
           setPermissionError(false);
@@ -206,7 +210,8 @@ const App: React.FC = () => {
                       phone: userData.phone || '',
                       status: userData.status || 'ACTIVE',
                       joinedDate: userData.createdAt || new Date().toISOString(),
-                      unavailableDates: userData.unavailableDates || []
+                      unavailableDates: userData.unavailableDates || [],
+                      studioId: userData.studioId || userData.ownerId // Important for Team Access
                   });
                   setIsOfflineMode(false);
                   setPermissionError(false);
@@ -242,8 +247,13 @@ const App: React.FC = () => {
           return;
       }
 
-      // SAAS LOGIC: Filter all queries by ownerId
-      const q = (col: string) => query(collection(db, col), where("ownerId", "==", currentUser.id));
+      // SAAS LOGIC: Determine the "Active Studio ID"
+      // If I am an Owner, my studioId is my ID. 
+      // If I am Staff, my studioId points to my Owner.
+      const activeStudioId = currentUser.studioId || currentUser.id;
+
+      // Filter queries by the Active Studio ID
+      const q = (col: string) => query(collection(db, col), where("ownerId", "==", activeStudioId));
 
       // Global error handler for snapshots
       const handleSnapshotError = (err: any) => {
@@ -251,16 +261,17 @@ const App: React.FC = () => {
           if (err.code === 'permission-denied') setPermissionError(true);
       };
 
-      // 1. Config Sync (Per User)
-      // FIX: Renamed 'doc' to 'snapshot' to prevent shadowing the imported doc function
-      const unsubConfig = onSnapshot(doc(db, "studios", currentUser.id), (snapshot) => {
+      // 1. Config Sync (Per Studio)
+      const unsubConfig = onSnapshot(doc(db, "studios", activeStudioId), (snapshot) => {
           if (snapshot.exists()) {
               setConfig(snapshot.data() as StudioConfig);
           } else {
-              // Initialize default config for new SaaS user
-              const initialConfigWithId = { ...INITIAL_CONFIG, ownerId: currentUser.id };
-              setDoc(doc(db, "studios", currentUser.id), initialConfigWithId);
-              setConfig(initialConfigWithId);
+              // Initialize default config for new SaaS user (Only if Owner)
+              if (currentUser.role === 'OWNER') {
+                  const initialConfigWithId = { ...INITIAL_CONFIG, ownerId: activeStudioId };
+                  setDoc(doc(db, "studios", activeStudioId), initialConfigWithId);
+                  setConfig(initialConfigWithId);
+              }
           }
       }, handleSnapshotError);
 
@@ -289,10 +300,11 @@ const App: React.FC = () => {
 
       const unsubPackages = onSnapshot(q("packages"), (snapshot) => {
           const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Package));
-          // Seed default packages if empty
-          if (data.length === 0) {
+          
+          // Seed default packages if empty (Only Owner)
+          if (data.length === 0 && currentUser.role === 'OWNER') {
               INITIAL_PACKAGES.forEach(p => {
-                  setDoc(doc(db, "packages", p.id), { ...p, ownerId: currentUser.id });
+                  setDoc(doc(db, "packages", p.id), { ...p, ownerId: activeStudioId });
               });
           } else {
               setPackages(data);
@@ -301,10 +313,10 @@ const App: React.FC = () => {
 
       const unsubAccounts = onSnapshot(q("accounts"), (snapshot) => {
           const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Account));
-          // Seed default accounts if empty
-          if (data.length === 0) {
+          // Seed default accounts if empty (Only Owner)
+          if (data.length === 0 && currentUser.role === 'OWNER') {
               INITIAL_ACCOUNTS.forEach(a => {
-                  setDoc(doc(db, "accounts", a.id), { ...a, ownerId: currentUser.id });
+                  setDoc(doc(db, "accounts", a.id), { ...a, ownerId: activeStudioId });
               });
           } else {
               setAccounts(data);
@@ -316,8 +328,15 @@ const App: React.FC = () => {
           setNotifications(data);
       }, handleSnapshotError);
 
-      // Fetch Users (Team members belonging to this owner)
-      setUsers([currentUser]); 
+      // Fetch Team Members (Users who belong to this studio)
+      // Note: This assumes users are manually created with the correct ownerId/studioId
+      const unsubUsers = onSnapshot(q("users"), (snapshot) => {
+          const team = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as User));
+          // Always include self if not in list (e.g. owner might not be in 'users' query if ownerId matches differently, but here we align ownerId)
+          const hasSelf = team.find(u => u.id === currentUser.id);
+          if (!hasSelf) team.push(currentUser);
+          setUsers(team);
+      }, handleSnapshotError);
 
       return () => {
           unsubConfig();
@@ -328,10 +347,13 @@ const App: React.FC = () => {
           unsubPackages();
           unsubAccounts();
           unsubNotifications();
+          unsubUsers();
       };
   }, [isLoggedIn, currentUser.id, isOfflineMode, permissionError]);
 
   // --- CRUD HANDLERS (SaaS Enabled) ---
+  
+  const getActiveOwnerId = () => currentUser.studioId || currentUser.id;
 
   const handleAddBooking = async (newBooking: Booking, paymentDetails?: { amount: number, accountId: string }) => {
       if (isOfflineMode) {
@@ -340,20 +362,19 @@ const App: React.FC = () => {
       }
       
       const batch = writeBatch(db);
+      const ownerId = getActiveOwnerId();
       
       // 1. Create Booking with Owner ID
       const bookingRef = doc(db, "bookings", newBooking.id);
-      batch.set(bookingRef, { ...newBooking, ownerId: currentUser.id });
+      batch.set(bookingRef, { ...newBooking, ownerId });
 
       // 2. Handle Payment (Atomic)
       if (paymentDetails && paymentDetails.amount > 0 && paymentDetails.accountId) {
           // Update Account Balance
           const accountRef = doc(db, "accounts", paymentDetails.accountId);
-          // Check if account exists first to avoid "No document to update" error
-          // Using set with merge: true simulates an update or create
           batch.set(accountRef, { 
               balance: increment(paymentDetails.amount),
-              ownerId: currentUser.id // Ensure ownerId is set if creating
+              ownerId // Ensure ownerId is set if creating
           }, { merge: true });
 
           // Create Transaction Record
@@ -368,7 +389,7 @@ const App: React.FC = () => {
               category: 'Sales / Booking',
               status: 'COMPLETED',
               bookingId: newBooking.id,
-              ownerId: currentUser.id // Tag with owner
+              ownerId
           };
           batch.set(transactionRef, transaction);
       }
@@ -384,7 +405,7 @@ const App: React.FC = () => {
 
   const handleAddClient = async (newClient: Client) => {
       try {
-          await setDoc(doc(db, "clients", newClient.id), { ...newClient, ownerId: currentUser.id });
+          await setDoc(doc(db, "clients", newClient.id), { ...newClient, ownerId: getActiveOwnerId() });
       } catch (e) {
           console.error("Error adding client:", e);
       }
@@ -392,7 +413,7 @@ const App: React.FC = () => {
 
   const handleAddAsset = async (newAsset: Asset) => {
       try {
-          await setDoc(doc(db, "assets", newAsset.id), { ...newAsset, ownerId: currentUser.id });
+          await setDoc(doc(db, "assets", newAsset.id), { ...newAsset, ownerId: getActiveOwnerId() });
       } catch (e) {
           console.error("Error adding asset:", e);
       }
@@ -400,6 +421,7 @@ const App: React.FC = () => {
 
   const handleAddTransaction = async (newTransactionData: { description: string; amount: number; category: string; accountId: string; bookingId?: string }) => {
       const batch = writeBatch(db);
+      const ownerId = getActiveOwnerId();
       
       // 1. Create Transaction
       const tId = `t-${Date.now()}`;
@@ -414,7 +436,7 @@ const App: React.FC = () => {
           category: newTransactionData.category,
           status: 'COMPLETED',
           bookingId: newTransactionData.bookingId,
-          ownerId: currentUser.id
+          ownerId
       };
       batch.set(tRef, newTransaction);
 
@@ -431,7 +453,8 @@ const App: React.FC = () => {
       setConfig(newConfig);
       if (!isOfflineMode) {
           try {
-              await setDoc(doc(db, "studios", currentUser.id), { ...newConfig, ownerId: currentUser.id });
+              const ownerId = getActiveOwnerId();
+              await setDoc(doc(db, "studios", ownerId), { ...newConfig, ownerId });
           } catch (e: any) {
               console.error("Config Update Error:", e);
               alert("Failed to save settings. " + e.message);
@@ -440,9 +463,7 @@ const App: React.FC = () => {
   };
 
   const handleUpdateBooking = async (updatedBooking: Booking) => {
-      // Optimistic Update
       setBookings(prev => prev.map(b => b.id === updatedBooking.id ? updatedBooking : b));
-      
       if (!isOfflineMode) {
           try {
               await updateDoc(doc(db, "bookings", updatedBooking.id), updatedBooking as any);
@@ -452,73 +473,48 @@ const App: React.FC = () => {
       }
   };
 
-  // Generic Delete Handler with Optimistic UI
   const createDeleteHandler = (collectionName: string, stateSetter: React.Dispatch<React.SetStateAction<any[]>>) => {
       return async (id: string) => {
-          // 1. Optimistic UI Update (Remove immediately)
           stateSetter(prev => prev.filter(item => item.id !== id));
-
-          // 2. Database Delete
           if (!isOfflineMode) {
               try {
                   await deleteDoc(doc(db, collectionName, id));
               } catch (e: any) {
                   console.error(`Error deleting from ${collectionName}:`, e);
-                  // Rollback handled by onSnapshot usually, but we can alert
                   alert(`Failed to delete from server: ${e.message}`);
               }
           }
       };
   };
 
-  // CRITICAL: SAFE DELETE FOR TRANSACTIONS TO PREVENT FINANCIAL DRIFT
   const handleSafeDeleteTransaction = async (id: string) => {
       if (isOfflineMode) {
           alert("Cannot delete transactions offline (requires atomic rollback).");
           return;
       }
-
-      // Optimistic UI
       setTransactions(prev => prev.filter(t => t.id !== id));
-
       try {
           const batch = writeBatch(db);
           const tRef = doc(db, "transactions", id);
-          
-          // We need the transaction data first to reverse it
-          // Note: In a real app, we might need to fetch it if not in state, but here we assume state is sync
           const transaction = transactions.find(t => t.id === id);
           
           if (!transaction) {
-              // Fallback: try to fetch if not in state
               const snap = await getDoc(tRef);
               if(!snap.exists()) return; 
-              // If we have to fetch, we can't proceed easily without complex logic here. 
-              // Simplification: Alert user if state drift.
               return; 
           }
 
-          // 1. Reverse Account Balance
           const accRef = doc(db, "accounts", transaction.accountId);
-          const reverseAmount = transaction.type === 'INCOME' ? -transaction.amount : transaction.amount; // If income, subtract. If expense, add back.
-          
-          batch.update(accRef, { 
-              balance: increment(reverseAmount) 
-          });
+          const reverseAmount = transaction.type === 'INCOME' ? -transaction.amount : transaction.amount; 
+          batch.update(accRef, { balance: increment(reverseAmount) });
 
-          // 2. If linked to booking, reverse paid amount
           if (transaction.bookingId && transaction.type === 'INCOME') {
               const bookingRef = doc(db, "bookings", transaction.bookingId);
-              batch.update(bookingRef, {
-                  paidAmount: increment(-transaction.amount)
-              });
+              batch.update(bookingRef, { paidAmount: increment(-transaction.amount) });
           }
 
-          // 3. Delete Transaction
           batch.delete(tRef);
-
           await batch.commit();
-
       } catch (e: any) {
           console.error("Error deleting transaction:", e);
           alert("Failed to reverse transaction. Please refresh and try again.");
@@ -528,12 +524,11 @@ const App: React.FC = () => {
   const handleDeleteBooking = createDeleteHandler("bookings", setBookings);
   const handleDeleteClient = createDeleteHandler("clients", setClients);
   const handleDeleteAsset = createDeleteHandler("assets", setAssets);
-  // Replaced generic handler with safe one
   const handleDeleteTransaction = handleSafeDeleteTransaction;
+  // Packages now use Soft Delete in SettingsView, but we keep this for hard delete if needed
   const handleDeletePackage = createDeleteHandler("packages", setPackages);
   const handleDeleteUser = createDeleteHandler("users", setUsers);
 
-  // Update Generic
   const handleUpdateClient = async (client: Client) => {
       if(!isOfflineMode) await updateDoc(doc(db, "clients", client.id), client as any);
   };
@@ -544,24 +539,22 @@ const App: React.FC = () => {
       if(!isOfflineMode) await updateDoc(doc(db, "packages", pkg.id), pkg as any);
   };
   const handleAddPackage = async (pkg: Package) => {
-      if(!isOfflineMode) await setDoc(doc(db, "packages", pkg.id), { ...pkg, ownerId: currentUser.id });
+      if(!isOfflineMode) await setDoc(doc(db, "packages", pkg.id), { ...pkg, ownerId: getActiveOwnerId() });
   };
   
   const handleSettleBooking = async (bookingId: string, amount: number, accountId: string) => {
       const batch = writeBatch(db);
+      const ownerId = getActiveOwnerId();
       
-      // 1. Update Booking
       const bookingRef = doc(db, "bookings", bookingId);
       batch.update(bookingRef, { 
           paidAmount: increment(amount),
-          status: amount > 0 ? 'COMPLETED' : 'BOOKED' // Auto-complete if paid? Optional logic
+          status: amount > 0 ? 'COMPLETED' : 'BOOKED'
       });
 
-      // 2. Update Account
       const accountRef = doc(db, "accounts", accountId);
       batch.set(accountRef, { balance: increment(amount) }, { merge: true });
 
-      // 3. Create Transaction
       const tId = `t-${Date.now()}`;
       const tRef = doc(db, "transactions", tId);
       batch.set(tRef, {
@@ -569,12 +562,12 @@ const App: React.FC = () => {
           date: new Date().toISOString(),
           description: `Settlement for Booking #${bookingId.substring(0,4)}`,
           amount: amount,
-          type: amount >= 0 ? 'INCOME' : 'EXPENSE', // Negative amount = Refund
+          type: amount >= 0 ? 'INCOME' : 'EXPENSE', 
           accountId: accountId,
           category: 'Sales / Settlement',
           status: 'COMPLETED',
           bookingId: bookingId,
-          ownerId: currentUser.id
+          ownerId
       });
 
       await batch.commit();
@@ -584,14 +577,12 @@ const App: React.FC = () => {
       await signOut(auth);
       setIsLoggedIn(false);
       setAuthView('LOGIN');
-      // Clear state to prevent data leak on re-login
       setBookings([]);
       setClients([]);
       setAssets([]);
       setTransactions([]);
   };
 
-  // Theme Toggle
   const toggleTheme = () => {
       const newTheme = !isDarkMode;
       setIsDarkMode(newTheme);
@@ -603,12 +594,9 @@ const App: React.FC = () => {
       }
   };
   
-  // Initial Theme Apply
   useEffect(() => {
       if (!isDarkMode) document.documentElement.classList.add('light-mode');
   }, []);
-
-  // --- RENDER ---
 
   if (!isLoggedIn) {
       return authView === 'LOGIN' 
@@ -644,7 +632,6 @@ const App: React.FC = () => {
     <div className="flex h-screen bg-lumina-base text-lumina-text font-sans overflow-hidden transition-colors duration-300">
       {permissionError && <PermissionErrorHelp onClose={checkConnection} />}
       
-      {/* Sidebar */}
       <Sidebar 
         currentUser={currentUser} 
         currentView={currentView} 
@@ -655,10 +642,8 @@ const App: React.FC = () => {
         onToggleTheme={toggleTheme}
       />
 
-      {/* Main Content */}
       <main className="flex-1 ml-0 lg:ml-64 p-4 lg:p-8 overflow-hidden flex flex-col relative h-screen">
         
-        {/* Offline Indicator */}
         {isOfflineMode && (
             <div className="absolute top-0 left-0 right-0 bg-amber-500/90 text-black text-xs font-bold text-center py-1 z-50 flex items-center justify-center gap-2">
                 <WifiOff size={12} /> OFFLINE MODE - Changes saved locally
@@ -666,10 +651,8 @@ const App: React.FC = () => {
             </div>
         )}
 
-        {/* Top Bar (Mobile Menu Trigger could go here) */}
         <div className="flex justify-between items-center mb-6 lg:hidden">
              <div className="font-display font-bold text-xl">LUMINA</div>
-             {/* Mobile menu toggle would go here */}
         </div>
 
         <div className="flex-1 overflow-hidden relative h-full">
@@ -702,6 +685,7 @@ const App: React.FC = () => {
                             onDateChange={setViewDate}
                             onNewBooking={(prefill) => { setBookingPrefill(prefill); setIsNewBookingOpen(true); }}
                             onSelectBooking={setSelectedBookingId}
+                            googleToken={googleToken}
                         />
                     )}
                     {currentView === 'production' && (
@@ -725,16 +709,16 @@ const App: React.FC = () => {
                     {currentView === 'finance' && (
                         <FinanceView 
                             accounts={accounts}
-                            metrics={[]} // Metrics calculated inside view or passed prop
+                            metrics={[]} 
                             bookings={bookings}
                             users={activePhotographers}
                             transactions={transactions}
                             config={config}
                             onTransfer={(from, to, amt) => {
-                                // Implement transfer logic similar to Add Transaction
                                 const batch = writeBatch(db);
                                 batch.set(doc(db, "accounts", from), { balance: increment(-amt) }, { merge: true });
                                 batch.set(doc(db, "accounts", to), { balance: increment(amt) }, { merge: true });
+                                const ownerId = getActiveOwnerId();
                                 batch.set(doc(db, "transactions", `t-${Date.now()}`), {
                                     id: `t-${Date.now()}`,
                                     date: new Date().toISOString(),
@@ -745,7 +729,7 @@ const App: React.FC = () => {
                                     relatedAccountId: to,
                                     category: 'Transfer',
                                     status: 'COMPLETED',
-                                    ownerId: currentUser.id
+                                    ownerId
                                 });
                                 batch.commit();
                             }}
@@ -770,10 +754,13 @@ const App: React.FC = () => {
                             users={activePhotographers}
                             bookings={bookings}
                             onAddUser={(u) => {
-                                // In this SaaS version, adding a user essentially creates a dummy profile for assignment
-                                // Real multi-user SaaS would require invites. 
-                                // For now we store "staff" in a subcollection or just the users collection if allowed
-                                setDoc(doc(db, "users", u.id), { ...u, ownerId: currentUser.id }); 
+                                const ownerId = getActiveOwnerId();
+                                // Create user and assign ownerId so they show up in this team
+                                setDoc(doc(db, "users", u.id), { 
+                                    ...u, 
+                                    ownerId,
+                                    studioId: ownerId // Essential for them to see data when they login
+                                }); 
                             }}
                             onUpdateUser={(u) => updateDoc(doc(db, "users", u.id), u as any)}
                             onDeleteUser={handleDeleteUser}
@@ -789,13 +776,14 @@ const App: React.FC = () => {
                             onUpdateConfig={handleUpdateConfig}
                             bookings={bookings}
                             currentUser={currentUser}
+                            googleToken={googleToken}
+                            setGoogleToken={setGoogleToken}
                             onUpdateUserProfile={async (u) => {
                                 await updateDoc(doc(db, "users", u.id), u as any);
                                 setCurrentUser(prev => ({ ...prev, ...u }));
                             }}
                             onDeleteAccount={async () => {
                                 if(window.confirm("WARNING: This will delete your account and ALL data permanently. Are you sure?")) {
-                                    // In a real app, use a Cloud Function for recursive delete
                                     alert("Account deletion request sent. (Simulation)");
                                 }
                             }}
@@ -812,7 +800,6 @@ const App: React.FC = () => {
             </AnimatePresence>
         </div>
 
-        {/* Modals */}
         <NewBookingModal 
             isOpen={isNewBookingOpen} 
             onClose={() => { setIsNewBookingOpen(false); setBookingPrefill(undefined); }}
@@ -824,6 +811,7 @@ const App: React.FC = () => {
             onAddBooking={handleAddBooking}
             onAddClient={handleAddClient}
             initialData={bookingPrefill}
+            googleToken={googleToken}
         />
 
         <ProjectDrawer 
@@ -855,7 +843,6 @@ const App: React.FC = () => {
             currentUser={currentUser}
         />
 
-        {/* Global FAB for Quick Actions */}
         <motion.button
             whileHover={{ scale: 1.1 }}
             whileTap={{ scale: 0.9 }}
@@ -870,7 +857,7 @@ const App: React.FC = () => {
   );
 };
 
-const Plus = ({ size }: { size: number }) => (
+const PlusIcon = ({ size }: { size: number }) => (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
         <line x1="12" y1="5" x2="12" y2="19"></line>
         <line x1="5" y1="12" x2="19" y2="12"></line>

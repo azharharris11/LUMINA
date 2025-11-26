@@ -1,8 +1,9 @@
 
 import React, { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Booking, ProjectStatus, User, StudioConfig } from '../types';
+import { Booking, ProjectStatus, User, StudioConfig, Package } from '../types';
 import { Clock, CheckCircle2, ChevronRight, AlertCircle, GripVertical, CheckSquare } from 'lucide-react';
+import { PACKAGES } from '../data'; // Import packages to lookup turnaround
 
 const Motion = motion as any;
 
@@ -11,13 +12,11 @@ interface ProductionViewProps {
   onSelectBooking: (bookingId: string) => void; 
   currentUser?: User; 
   onUpdateBooking?: (booking: Booking) => void;
-  config: StudioConfig; // Added config prop
+  config: StudioConfig; 
 }
 
 const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooking, currentUser, onUpdateBooking, config }) => {
   const [filterMode, setFilterMode] = useState<'ALL' | 'MINE'>('ALL');
-  
-  // Drag State
   const [draggedBookingId, setDraggedBookingId] = useState<string | null>(null);
   const [activeDropColumn, setActiveDropColumn] = useState<ProjectStatus | null>(null);
   
@@ -30,8 +29,6 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
     { id: 'REVIEW', label: 'Quality Check', color: 'bg-pink-500/10', borderColor: 'border-pink-500/50' },
     { id: 'COMPLETED', label: 'Ready / Done', color: 'bg-emerald-500/10', borderColor: 'border-emerald-500/50' },
   ];
-
-  // --- LOGIC ---
 
   const isPaymentSettled = (booking: Booking) => {
       const taxRate = config.taxRate || 0;
@@ -64,15 +61,26 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
 
   const isOverdue = (booking: Booking) => {
       if (booking.status === 'COMPLETED' || booking.status === 'CANCELLED') return false;
+      
+      // Smart Overdue Logic
       const bookingDate = new Date(booking.date);
       const today = new Date();
-      // Only overdue if date is in the past (yesterday or earlier)
       today.setHours(0,0,0,0);
       bookingDate.setHours(0,0,0,0);
-      return bookingDate < today;
-  };
 
-  // --- DRAG AND DROP HANDLERS ---
+      // If stage is BOOKED or SHOOTING, overdue is simply the date passing
+      if (booking.status === 'BOOKED' || booking.status === 'SHOOTING') {
+          return bookingDate < today;
+      }
+
+      // If post-production, check against Turnaround Time
+      const pkg = PACKAGES.find(p => p.name === booking.package);
+      const turnaround = pkg?.turnaroundDays || 7; // Default 7 days
+      const dueDate = new Date(bookingDate);
+      dueDate.setDate(dueDate.getDate() + turnaround);
+
+      return dueDate < today;
+  };
 
   const handleDragStart = (e: React.DragEvent, id: string) => {
       setDraggedBookingId(id);
@@ -96,13 +104,11 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
       if (id && onUpdateBooking) {
           const booking = bookings.find(b => b.id === id);
           if (booking && booking.status !== status) {
-              // GATEKEEPER CHECK FOR COMPLETION
               if (status === 'COMPLETED' && !isPaymentSettled(booking)) {
                    alert(`GATEKEEPER ALERT\n\nCannot move to COMPLETED.\nClient has outstanding balance.\nPlease settle payment in Finance tab first.`);
                    resetDragState();
                    return;
               }
-
               onUpdateBooking({ ...booking, status: status });
           }
       }
@@ -117,8 +123,6 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
       setDraggedBookingId(null);
       setActiveDropColumn(null);
   };
-
-  // --- RENDER ---
 
   const filteredBookings = bookings.filter(b => {
       if (b.status === 'CANCELLED') return false; 
@@ -172,7 +176,6 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
                 onDragOver={(e) => handleDragOver(e, col.id)}
                 onDrop={(e) => handleDrop(e, col.id)}
               >
-                {/* Column Header */}
                 <div className={`flex items-center justify-between p-3 border-b ${col.borderColor} bg-lumina-surface/50 rounded-t-lg backdrop-blur-sm select-none`}>
                   <h3 className="font-bold text-sm tracking-wide text-white flex items-center gap-2">
                       <span className={`w-2.5 h-2.5 rounded-full ${col.borderColor.replace('border-', 'bg-').replace('/50', '')}`}></span>
@@ -181,14 +184,12 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
                   <span className="text-xs bg-lumina-base px-2 py-0.5 rounded-full text-lumina-muted font-mono">{tasks.length}</span>
                 </div>
 
-                {/* Drop Zone / Card List */}
                 <div className="flex-1 p-2 overflow-y-auto space-y-3 custom-scrollbar relative">
                   <AnimatePresence>
                     {tasks.map((task) => {
                         const overdue = isOverdue(task);
                         const isDragging = draggedBookingId === task.id;
                         
-                        // Progress Calculation
                         const totalTasks = task.tasks?.length || 0;
                         const completedTasks = task.tasks?.filter(t => t.completed).length || 0;
                         const progressPercent = totalTasks > 0 ? (completedTasks / totalTasks) * 100 : 0;
@@ -212,12 +213,10 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
                                     ${isDragging ? 'ring-2 ring-lumina-accent rotate-2 opacity-50' : ''}
                                 `}
                             >
-                                {/* Overdue Indicator */}
                                 {overdue && (
                                     <div className="absolute top-0 right-0 w-3 h-3 bg-red-500 rounded-bl-lg z-10" title="Overdue"></div>
                                 )}
 
-                                {/* Drag Handle */}
                                 <div className="absolute top-1/2 left-1.5 -translate-y-1/2 text-lumina-highlight opacity-0 group-hover:opacity-100 transition-opacity">
                                     <GripVertical size={14} />
                                 </div>
@@ -242,10 +241,9 @@ const ProductionView: React.FC<ProductionViewProps> = ({ bookings, onSelectBooki
                                     
                                     <div className={`flex items-center text-xs mb-3 ${overdue ? 'text-red-400 font-bold' : 'text-lumina-muted'}`}>
                                         {overdue ? <AlertCircle size={12} className="mr-1" /> : <Clock size={12} className="mr-1" />}
-                                        {overdue ? 'Overdue' : task.date}
+                                        {overdue ? 'Due / Overdue' : task.date}
                                     </div>
 
-                                    {/* Task Progress Bar */}
                                     {totalTasks > 0 && (
                                         <div className="mb-3">
                                             <div className="flex justify-between text-[9px] text-lumina-muted mb-0.5">

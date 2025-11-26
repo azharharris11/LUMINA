@@ -1,4 +1,5 @@
 
+
 import { Account, Booking, Transaction, User, MonthlyMetric, Asset, Package, Client, Notification, StudioConfig } from './types';
 
 export const STUDIO_CONFIG: StudioConfig = {
@@ -6,14 +7,24 @@ export const STUDIO_CONFIG: StudioConfig = {
   address: 'Jl. Senopati No. 45, Kebayoran Baru, Jakarta Selatan',
   phone: '+62 812 9988 7766',
   website: 'www.luminastudios.id',
-  taxRate: 11, // 11% PPN
+  
+  // Financial Defaults
+  taxRate: 11, 
+  requiredDownPaymentPercentage: 50, // Default 50% DP
+  paymentDueDays: 0, // Due on day of shoot
   bankName: 'BCA',
   bankAccount: '883-291-001',
   bankHolder: 'PT Lumina Kreatif Indonesia',
+  
+  // Operational Defaults
+  operatingHoursStart: '09:00',
+  operatingHoursEnd: '21:00',
+  bufferMinutes: 15, 
+  defaultTurnaroundDays: 7,
+
   logoUrl: '', 
   npwp: '82.992.112.9-442.000',
   invoiceFooter: 'Payment is non-refundable. Reschedule allowed max 1x.',
-  bufferMinutes: 15, // Default buffer time
   
   rooms: [
       { id: 'r1', name: 'STUDIO A', type: 'INDOOR', color: 'indigo' },
@@ -286,6 +297,7 @@ export const PACKAGES: Package[] = [
         duration: 1, 
         features: ['1 Hour Session', '10 Edited Photos', '1 Studio Background'], 
         active: true, 
+        turnaroundDays: 5,
         costBreakdown: [
             { id: 'cost1', description: 'Studio Cleaning', amount: 25000, category: 'OTHER' },
             { id: 'cost2', description: 'Electricity & Utilities', amount: 50000, category: 'OTHER' }
@@ -298,6 +310,7 @@ export const PACKAGES: Package[] = [
         duration: 2, 
         features: ['2 Hour Session', '25 Edited Photos', '2 Studio Backgrounds', '1 Canvas Print'], 
         active: true, 
+        turnaroundDays: 7,
         costBreakdown: [
             { id: 'cost3', description: 'Canvas Print 40x60', amount: 180000, category: 'MATERIAL' },
             { id: 'cost4', description: 'Freelance Assistant', amount: 150000, category: 'LABOR' },
@@ -311,6 +324,7 @@ export const PACKAGES: Package[] = [
         duration: 4, 
         features: ['4 Hour Session', 'All Raw Files', 'Unlimited Backgrounds', 'MUA Included', 'Lunch'], 
         active: true, 
+        turnaroundDays: 14,
         costBreakdown: [
             { id: 'cost6', description: 'MUA Fee', amount: 750000, category: 'LABOR' },
             { id: 'cost7', description: 'Lunch Catering', amount: 150000, category: 'OTHER' },
