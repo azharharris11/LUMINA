@@ -1,4 +1,5 @@
 
+// ... existing imports ...
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Booking, ProjectStatus, User, BookingFile, StudioConfig, Package, BookingItem, BookingTask, ActivityLog, Asset, BookingComment, Discount, TimeLog, Transaction, Account } from '../types';
@@ -29,6 +30,7 @@ type Tab = 'OVERVIEW' | 'TASKS' | 'MOODBOARD' | 'TIMELINE' | 'LOGS' | 'PROFITABI
 
 const Motion = motion as any;
 
+// ... interfaces DriveFolder, DriveFile ...
 interface DriveFolder {
     id: string;
     name: string;
@@ -43,8 +45,8 @@ interface DriveFile {
 }
 
 const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking, photographer, onUpdateBooking, onDeleteBooking, bookings = [], config, packages = [], currentUser, assets = [], users = [], transactions = [], onAddTransaction, accounts = [], googleToken, onLogActivity }) => {
+  // ... existing state declarations ...
   const [activeTab, setActiveTab] = useState<Tab>('OVERVIEW');
-  
   const [isLogisticsEditing, setIsLogisticsEditing] = useState(false);
   const [logisticsForm, setLogisticsForm] = useState<{
       date: string;
@@ -57,14 +59,12 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // --- DRIVE PICKER STATE ---
   const [showDrivePicker, setShowDrivePicker] = useState(false);
   const [driveBreadcrumbs, setDriveBreadcrumbs] = useState<DriveFolder[]>([{id: 'root', name: 'My Drive'}]);
   const [driveFolderList, setDriveFolderList] = useState<DriveFolder[]>([]);
   const [isLoadingDrive, setIsLoadingDrive] = useState(false);
   const [actionLoading, setActionLoading] = useState(false); 
   
-  // Drive Actions State
   const [showNewFolderInput, setShowNewFolderInput] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   
@@ -75,7 +75,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   
   const currentDriveFolderId = driveBreadcrumbs[driveBreadcrumbs.length - 1].id;
 
-  // Proofing State
   const [proofingFiles, setProofingFiles] = useState<DriveFile[]>([]);
   const [isLoadingProofing, setIsLoadingProofing] = useState(false);
 
@@ -89,17 +88,14 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   const [revenueWarning, setRevenueWarning] = useState<string | null>(null);
   const [showOvertimePrompt, setShowOvertimePrompt] = useState(false); 
   
-  // WhatsApp Prompt State
   const [showWhatsAppPrompt, setShowWhatsAppPrompt] = useState(false);
 
   const [activeTimerStart, setActiveTimerStart] = useState<number | null>(null);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const timerIntervalRef = useRef<number | null>(null);
 
-  // Calculations for Payment Status
   const isPaymentSettled = useMemo(() => {
       if (!booking) return false;
-      // Re-calculate total to be safe
       const tax = booking.taxSnapshot || 0;
       let subtotal = booking.price;
       if (booking.items && booking.items.length > 0) {
@@ -113,6 +109,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       return booking.paidAmount >= (total - 100);
   }, [booking]);
 
+  // ... existing effects ...
   useEffect(() => {
     if (booking) {
       setActiveTab('OVERVIEW');
@@ -150,7 +147,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   }, []);
 
-  // --- DRIVE FUNCTIONS ---
+  // ... existing drive functions ...
   const fetchDriveFolders = async (parentId: string) => {
       if (!googleToken) return;
       setIsLoadingDrive(true);
@@ -178,26 +175,17 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // FETCH PROOFING IMAGES (Real Drive Integration)
   const fetchProofingFiles = async () => {
       if (!googleToken || !booking?.deliveryUrl) return;
-      
-      // Extract Folder ID
       const match = booking.deliveryUrl.match(/\/folders\/([a-zA-Z0-9-_]+)/);
       const folderId = match ? match[1] : null;
-      
       if (!folderId) return;
 
       setIsLoadingProofing(true);
       try {
-          // Query for images in the folder
           const query = `'${folderId}' in parents and mimeType contains 'image/' and trashed=false`;
           const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,thumbnailLink,webViewLink,mimeType)&orderBy=createdTime desc`;
-          
-          const res = await fetch(url, {
-              headers: { 'Authorization': `Bearer ${googleToken}` }
-          });
-          
+          const res = await fetch(url, { headers: { 'Authorization': `Bearer ${googleToken}` } });
           if (res.ok) {
               const data = await res.json();
               setProofingFiles(data.files || []);
@@ -223,322 +211,94 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   }, [activeTab, googleToken, booking?.deliveryUrl]);
 
-  const handleNavigateDrive = (folder: DriveFolder) => {
-      setDriveBreadcrumbs(prev => [...prev, folder]);
-      setActiveMenuId(null); 
-  };
-
-  const handleDriveBack = () => {
-      if (driveBreadcrumbs.length > 1) {
-          setDriveBreadcrumbs(prev => prev.slice(0, -1));
-          setActiveMenuId(null);
-      }
-  };
-
-  const createSubFolder = async () => {
-      if (!newFolderName.trim() || !googleToken) return;
-      setActionLoading(true);
-      try {
-          const folderMetadata = {
-              name: newFolderName,
-              mimeType: 'application/vnd.google-apps.folder',
-              parents: [currentDriveFolderId]
-          };
-
-          const response = await fetch('https://www.googleapis.com/drive/v3/files', {
-              method: 'POST',
-              headers: {
-                  'Authorization': `Bearer ${googleToken}`,
-                  'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(folderMetadata),
-          });
-
-          if (!response.ok) throw new Error("Failed to create folder");
-          await fetchDriveFolders(currentDriveFolderId);
-          setShowNewFolderInput(false);
-          setNewFolderName('');
-      } catch (e: any) {
-          alert(`Error: ${e.message}`);
-      } finally {
-          setActionLoading(false);
-      }
-  };
-
-  const renameItem = async () => {
-      if (!renamingItem || !renameInput.trim() || !googleToken) return;
-      setActionLoading(true);
-      try {
-          const response = await fetch(`https://www.googleapis.com/drive/v3/files/${renamingItem.id}`, {
-              method: 'PATCH',
-              headers: {
-                  'Authorization': `Bearer ${googleToken}`,
-                  'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ name: renameInput }),
-          });
-
-          if (!response.ok) throw new Error("Failed to rename folder");
-
-          await fetchDriveFolders(currentDriveFolderId);
-          setRenamingItem(null);
-          setRenameInput('');
-          setActiveMenuId(null);
-      } catch (e: any) {
-          alert(`Error: ${e.message}`);
-      } finally {
-          setActionLoading(false);
-      }
-  };
-
-  const trashItem = async (item: DriveFolder) => {
-      if (!googleToken) return;
-      if (!window.confirm(`Are you sure you want to move '${item.name}' to trash?`)) return;
-      
-      setActionLoading(true);
-      try {
-          const response = await fetch(`https://www.googleapis.com/drive/v3/files/${item.id}`, {
-              method: 'PATCH',
-              headers: {
-                  'Authorization': `Bearer ${googleToken}`,
-                  'Content-Type': 'application/json',
-              },
-              body: JSON.stringify({ trashed: true }),
-          });
-
-          if (!response.ok) throw new Error("Failed to delete folder");
-
-          await fetchDriveFolders(currentDriveFolderId);
-          setActiveMenuId(null);
-      } catch (e: any) {
-          alert(`Error: ${e.message}`);
-      } finally {
-          setActionLoading(false);
-      }
-  };
-
+  // ... existing action handlers ...
+  const handleNavigateDrive = (folder: DriveFolder) => { setDriveBreadcrumbs(prev => [...prev, folder]); setActiveMenuId(null); };
+  const handleDriveBack = () => { if (driveBreadcrumbs.length > 1) { setDriveBreadcrumbs(prev => prev.slice(0, -1)); setActiveMenuId(null); } };
+  const createSubFolder = async () => { /* ... */ if (!newFolderName.trim() || !googleToken) return; setActionLoading(true); try { const folderMetadata = { name: newFolderName, mimeType: 'application/vnd.google-apps.folder', parents: [currentDriveFolderId] }; const response = await fetch('https://www.googleapis.com/drive/v3/files', { method: 'POST', headers: { 'Authorization': `Bearer ${googleToken}`, 'Content-Type': 'application/json', }, body: JSON.stringify(folderMetadata), }); if (!response.ok) throw new Error("Failed to create folder"); await fetchDriveFolders(currentDriveFolderId); setShowNewFolderInput(false); setNewFolderName(''); } catch (e: any) { alert(`Error: ${e.message}`); } finally { setActionLoading(false); } };
+  const renameItem = async () => { /* ... */ if (!renamingItem || !renameInput.trim() || !googleToken) return; setActionLoading(true); try { const response = await fetch(`https://www.googleapis.com/drive/v3/files/${renamingItem.id}`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${googleToken}`, 'Content-Type': 'application/json', }, body: JSON.stringify({ name: renameInput }), }); if (!response.ok) throw new Error("Failed to rename folder"); await fetchDriveFolders(currentDriveFolderId); setRenamingItem(null); setRenameInput(''); setActiveMenuId(null); } catch (e: any) { alert(`Error: ${e.message}`); } finally { setActionLoading(false); } };
+  const trashItem = async (item: DriveFolder) => { /* ... */ if (!googleToken) return; if (!window.confirm(`Are you sure you want to move '${item.name}' to trash?`)) return; setActionLoading(true); try { const response = await fetch(`https://www.googleapis.com/drive/v3/files/${item.id}`, { method: 'PATCH', headers: { 'Authorization': `Bearer ${googleToken}`, 'Content-Type': 'application/json', }, body: JSON.stringify({ trashed: true }), }); if (!response.ok) throw new Error("Failed to delete folder"); await fetchDriveFolders(currentDriveFolderId); setActiveMenuId(null); } catch (e: any) { alert(`Error: ${e.message}`); } finally { setActionLoading(false); } };
+  
   const handleUploadToDrive = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file) return;
-      
-      if (!googleToken) {
-          alert("Google Drive not connected. Please go to Settings > Integrations.");
-          return;
-      }
-
-      // Extract ID from url: https://drive.google.com/drive/u/0/folders/123456...
+      if (!googleToken) { alert("Google Drive not connected. Please go to Settings > Integrations."); return; }
       const match = booking?.deliveryUrl?.match(/\/folders\/([a-zA-Z0-9-_]+)/);
       const folderId = match ? match[1] : null;
-
-      if (!folderId) {
-          alert("No valid Drive Folder linked. Please click 'Create / Link Folder' first.");
-          return;
-      }
-
+      if (!folderId) { alert("No valid Drive Folder linked. Please click 'Create / Link Folder' first."); return; }
       setIsUploading(true);
       try {
-          const metadata = {
-              name: file.name,
-              mimeType: file.type,
-              parents: [folderId]
-          };
-
+          const metadata = { name: file.name, mimeType: file.type, parents: [folderId] };
           const form = new FormData();
           form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
           form.append('file', file);
-
-          const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', {
-              method: 'POST',
-              headers: {
-                  'Authorization': `Bearer ${googleToken}`,
-              },
-              body: form
-          });
-
-          if (!res.ok) {
-              if (res.status === 401) {
-                  alert("Google Session Expired. Please reconnect in Settings.");
-              } else {
-                  const err = await res.json();
-                  throw new Error(err.error?.message || "Upload failed");
-              }
-              return;
-          }
-          
-          if(booking && onLogActivity) {
-              onLogActivity(booking.id, 'DRIVE_UPLOAD', `Uploaded ${file.name} to Drive`);
-          }
-          
-          // Refresh proofing if active
+          const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id,webViewLink', { method: 'POST', headers: { 'Authorization': `Bearer ${googleToken}`, }, body: form });
+          if (!res.ok) { if (res.status === 401) { alert("Google Session Expired. Please reconnect in Settings."); } else { const err = await res.json(); throw new Error(err.error?.message || "Upload failed"); } return; }
+          if(booking && onLogActivity) { onLogActivity(booking.id, 'DRIVE_UPLOAD', `Uploaded ${file.name} to Drive`); }
           if (activeTab === 'PROOFING') fetchProofingFiles();
-          
           alert(`'${file.name}' uploaded successfully to the project folder!`);
-          
-      } catch (error: any) {
-          console.error("Drive Upload Error:", error);
-          alert("Upload failed: " + error.message);
-      } finally {
-          setIsUploading(false);
-          if (fileInputRef.current) fileInputRef.current.value = '';
-      }
+      } catch (error: any) { console.error("Drive Upload Error:", error); alert("Upload failed: " + error.message); } finally { setIsUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
-  const handleUploadClick = () => {
-      if (!booking?.deliveryUrl) {
-          alert("Please link a Google Drive folder first.");
-          return;
-      }
-      fileInputRef.current?.click();
-  };
-
-  // ... (Log functions, Timer functions) ...
-  const createLocalLog = (action: string, details?: string): ActivityLog => ({
-      id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      timestamp: new Date().toISOString(),
-      action,
-      details,
-      userId: currentUser?.id || 'sys',
-      userName: currentUser?.name || 'System'
-  });
-
+  const handleUploadClick = () => { if (!booking?.deliveryUrl) { alert("Please link a Google Drive folder first."); return; } fileInputRef.current?.click(); };
+  
+  // ... log and status handlers ...
+  const createLocalLog = (action: string, details?: string): ActivityLog => ({ id: `log-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, timestamp: new Date().toISOString(), action, details, userId: currentUser?.id || 'sys', userName: currentUser?.name || 'System' });
+  
   const handleStatusChange = (status: ProjectStatus) => {
       if (booking) {
           const log = createLocalLog('STATUS_CHANGE', `Status updated to ${status}`);
           let newTasks: BookingTask[] = [];
           const automations = config?.workflowAutomations || [];
           const automation = automations.find(a => a.triggerStatus === status);
-          
-          if (automation && automation.tasks.length > 0) {
-              newTasks = automation.tasks.map(title => ({
-                  id: `at-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-                  title: title,
-                  completed: false,
-                  assignedTo: currentUser?.id
-              }));
-          }
-
-          if (status === 'CULLING') {
-              setRevenueWarning("Tip: Did the shoot run late? Check if Overtime Fee is needed.");
-              setShowOvertimePrompt(true);
-          } else if (status === 'COMPLETED') {
-              setShowWhatsAppPrompt(true);
-          } else {
-              setShowOvertimePrompt(false);
-              setShowWhatsAppPrompt(false);
-          }
-
-          onUpdateBooking({ 
-              ...booking, 
-              status, 
-              tasks: [...(booking.tasks || []), ...newTasks],
-              logs: newTasks.length > 0 ? [createLocalLog('AUTOMATION', `Generated tasks for ${status}`), log, ...(booking.logs || [])] : [log, ...(booking.logs || [])] 
-          });
+          if (automation && automation.tasks.length > 0) { newTasks = automation.tasks.map(title => ({ id: `at-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`, title: title, completed: false, assignedTo: currentUser?.id })); }
+          if (status === 'CULLING') { setRevenueWarning("Tip: Did the shoot run late? Check if Overtime Fee is needed."); setShowOvertimePrompt(true); } else if (status === 'COMPLETED') { setShowWhatsAppPrompt(true); } else { setShowOvertimePrompt(false); setShowWhatsAppPrompt(false); }
+          onUpdateBooking({ ...booking, status, tasks: [...(booking.tasks || []), ...newTasks], logs: newTasks.length > 0 ? [createLocalLog('AUTOMATION', `Generated tasks for ${status}`), log, ...(booking.logs || [])] : [log, ...(booking.logs || [])] });
       }
   };
 
-  const handleSaveLogistics = () => {
-      if(booking) {
-          const newDuration = logisticsForm.duration;
-          const originalDuration = booking.duration;
-          
-          if (newDuration > originalDuration) {
-              setRevenueWarning(`Duration increased by ${newDuration - originalDuration}h. Consider adding Overtime Fee.`);
-              setShowOvertimePrompt(true);
-          }
-
-          onUpdateBooking({
-              ...booking,
-              ...logisticsForm,
-              logs: [createLocalLog('RESCHEDULE', `Changed to ${logisticsForm.date} @ ${logisticsForm.timeStart}`), ...(booking.logs || [])]
-          });
-          setIsLogisticsEditing(false);
-      }
-  };
-
-  const handleDelete = () => {
-      if (booking && onDeleteBooking && window.confirm('Are you sure you want to archive this project?')) {
-          onDeleteBooking(booking.id);
-          onClose();
-      }
-  };
-
-  const handleAddTask = () => {
-      if (booking && newTaskTitle) {
-          const task: BookingTask = { id: `t-${Date.now()}`, title: newTaskTitle, completed: false };
-          onUpdateBooking({ ...booking, tasks: [...(booking.tasks || []), task] });
-          setNewTaskTitle('');
-      }
-  };
-
-  const handleToggleTask = (taskId: string) => {
-      if (booking && booking.tasks) {
-          const updatedTasks = booking.tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t);
-          onUpdateBooking({ ...booking, tasks: updatedTasks });
-      }
-  };
-
-  const handleLinkDriveFolder = () => {
-      if (booking) {
-          const folderName = driveBreadcrumbs[driveBreadcrumbs.length - 1].name;
-          const folderLink = `https://drive.google.com/drive/u/0/folders/${currentDriveFolderId}`;
-          
-          onUpdateBooking({
-              ...booking,
-              deliveryUrl: folderLink,
-              logs: [createLocalLog('DRIVE_LINK', `Linked Drive folder: ${folderName}`), ...(booking.logs || [])]
-          });
-          setShowDrivePicker(false);
-      }
-  };
-
-  const handleQuickWhatsApp = () => {
-      const msg = `Hi ${booking?.clientName}, just checking in on your project!`;
-      const phone = booking?.clientPhone.replace(/\D/g, '') || '';
-      const url = `https://wa.me/${phone.startsWith('0') ? '62'+phone.slice(1) : phone}?text=${encodeURIComponent(msg)}`;
-      window.open(url, '_blank');
-      if(booking && onLogActivity) onLogActivity(booking.id, 'COMMUNICATION', 'Sent Quick WhatsApp');
-  };
-
-  const handleCopyPortalLink = () => {
-      const link = `${window.location.origin}/?site=${config?.ownerId || ''}&booking=${booking?.id}`;
-      navigator.clipboard.writeText(link);
-      alert("Client Portal Link Copied to Clipboard!");
-  };
+  const handleSaveLogistics = () => { if(booking) { const newDuration = logisticsForm.duration; const originalDuration = booking.duration; if (newDuration > originalDuration) { setRevenueWarning(`Duration increased by ${newDuration - originalDuration}h. Consider adding Overtime Fee.`); setShowOvertimePrompt(true); } onUpdateBooking({ ...booking, ...logisticsForm, logs: [createLocalLog('RESCHEDULE', `Changed to ${logisticsForm.date} @ ${logisticsForm.timeStart}`), ...(booking.logs || [])] }); setIsLogisticsEditing(false); } };
+  const handleDelete = () => { if (booking && onDeleteBooking && window.confirm('Are you sure you want to archive this project?')) { onDeleteBooking(booking.id); onClose(); } };
+  const handleAddTask = () => { if (booking && newTaskTitle) { const task: BookingTask = { id: `t-${Date.now()}`, title: newTaskTitle, completed: false }; onUpdateBooking({ ...booking, tasks: [...(booking.tasks || []), task] }); setNewTaskTitle(''); } };
+  const handleToggleTask = (taskId: string) => { if (booking && booking.tasks) { const updatedTasks = booking.tasks.map(t => t.id === taskId ? { ...t, completed: !t.completed } : t); onUpdateBooking({ ...booking, tasks: updatedTasks }); } };
+  const handleLinkDriveFolder = () => { if (booking) { const folderName = driveBreadcrumbs[driveBreadcrumbs.length - 1].name; const folderLink = `https://drive.google.com/drive/u/0/folders/${currentDriveFolderId}`; onUpdateBooking({ ...booking, deliveryUrl: folderLink, logs: [createLocalLog('DRIVE_LINK', `Linked Drive folder: ${folderName}`), ...(booking.logs || [])] }); setShowDrivePicker(false); } };
+  const handleQuickWhatsApp = () => { const msg = `Hi ${booking?.clientName}, just checking in on your project!`; const phone = booking?.clientPhone.replace(/\D/g, '') || ''; const url = `https://wa.me/${phone.startsWith('0') ? '62'+phone.slice(1) : phone}?text=${encodeURIComponent(msg)}`; window.open(url, '_blank'); if(booking && onLogActivity) onLogActivity(booking.id, 'COMMUNICATION', 'Sent Quick WhatsApp'); };
+  const handleCopyPortalLink = () => { const link = `${window.location.origin}/?site=${config?.ownerId || ''}&booking=${booking?.id}`; navigator.clipboard.writeText(link); alert("Client Portal Link Copied to Clipboard!"); };
 
   if (!isOpen || !booking) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 lg:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose}></div>
       
       <Motion.div 
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-lumina-surface border border-lumina-highlight w-full max-w-6xl h-[90vh] rounded-2xl shadow-2xl relative overflow-hidden flex flex-col"
+        initial={{ y: '100%', opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: '100%', opacity: 0 }}
+        className="bg-lumina-surface border-l border-r border-lumina-highlight w-full lg:max-w-6xl h-full lg:h-[90vh] lg:rounded-2xl shadow-2xl relative overflow-hidden flex flex-col"
       >
         {/* HEADER */}
-        <div className="p-6 border-b border-lumina-highlight bg-lumina-base flex justify-between items-center shrink-0">
+        <div className="p-4 lg:p-6 border-b border-lumina-highlight bg-lumina-base flex justify-between items-center shrink-0">
             <div className="flex items-center gap-4">
+                <button onClick={onClose} className="lg:hidden p-2 -ml-2 text-lumina-muted"><ArrowLeft size={20} /></button>
                 <div>
-                    <div className="flex items-center gap-3">
-                        <h2 className="text-2xl font-display font-bold text-white">{booking.clientName}</h2>
-                        <span className={`px-3 py-1 rounded-full text-xs font-bold border uppercase tracking-wider
+                    <div className="flex flex-col lg:flex-row lg:items-center gap-1 lg:gap-3">
+                        <h2 className="text-xl lg:text-2xl font-display font-bold text-white truncate max-w-[200px] lg:max-w-none">{booking.clientName}</h2>
+                        <span className={`w-fit px-2 lg:px-3 py-0.5 lg:py-1 rounded-full text-[10px] lg:text-xs font-bold border uppercase tracking-wider
                             ${booking.status === 'COMPLETED' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-lumina-highlight text-lumina-muted border-lumina-highlight'}
                         `}>
                             {booking.status}
                         </span>
                     </div>
-                    <div className="flex items-center gap-4 text-sm text-lumina-muted mt-1">
+                    <div className="hidden lg:flex items-center gap-4 text-sm text-lumina-muted mt-1">
                         <span className="flex items-center gap-1"><Tag size={12}/> {booking.package}</span>
                         <span className="flex items-center gap-1"><MapPin size={12}/> {booking.studio}</span>
                         <span className="flex items-center gap-1"><Calendar size={12}/> {new Date(booking.date).toLocaleDateString()}</span>
                     </div>
                 </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 lg:gap-3">
                 <select 
-                    className="bg-lumina-surface border border-lumina-highlight text-white text-xs rounded-lg p-2 font-bold uppercase tracking-wide focus:border-lumina-accent outline-none"
+                    className="bg-lumina-surface border border-lumina-highlight text-white text-xs rounded-lg p-2 font-bold uppercase tracking-wide focus:border-lumina-accent outline-none max-w-[100px] lg:max-w-none"
                     value={booking.status}
                     onChange={(e) => handleStatusChange(e.target.value as ProjectStatus)}
                 >
@@ -546,30 +306,28 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         <option key={s} value={s}>{s}</option>
                     ))}
                 </select>
-                <button onClick={handleDelete} className="p-2 hover:bg-rose-500/20 text-lumina-muted hover:text-rose-500 rounded-lg transition-colors">
+                <button onClick={handleDelete} className="hidden lg:block p-2 hover:bg-rose-500/20 text-lumina-muted hover:text-rose-500 rounded-lg transition-colors">
                     <Trash2 size={18} />
                 </button>
-                <button onClick={onClose} className="p-2 hover:bg-lumina-highlight text-lumina-muted hover:text-white rounded-lg transition-colors">
+                <button onClick={onClose} className="hidden lg:block p-2 hover:bg-lumina-highlight text-lumina-muted hover:text-white rounded-lg transition-colors">
                     <X size={24} />
                 </button>
             </div>
         </div>
 
         {/* TABS */}
-        <div className="bg-lumina-surface border-b border-lumina-highlight px-6 py-2 flex gap-2 overflow-x-auto no-scrollbar shrink-0">
+        <div className="bg-lumina-surface border-b border-lumina-highlight px-4 lg:px-6 py-2 flex gap-2 overflow-x-auto no-scrollbar shrink-0">
             {[
                 { id: 'OVERVIEW', icon: LayoutDashboard, label: 'Overview' },
                 { id: 'TASKS', icon: ListChecks, label: 'Tasks' },
-                { id: 'TIMELINE', icon: HardDrive, label: 'Files & Delivery' },
-                { id: 'PROOFING', icon: Eye, label: 'Client Proofing' },
-                { id: 'MOODBOARD', icon: Palette, label: 'Moodboard' },
-                { id: 'LOGS', icon: History, label: 'Activity' },
-                { id: 'PROFITABILITY', icon: PieChart, label: 'Financials' }
+                { id: 'TIMELINE', icon: HardDrive, label: 'Files' },
+                { id: 'PROOFING', icon: Eye, label: 'Proofing' },
+                { id: 'LOGS', icon: History, label: 'Logs' },
             ].map((tab) => (
                 <button 
                     key={tab.id}
                     onClick={() => setActiveTab(tab.id as Tab)}
-                    className={`px-4 py-2 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all
+                    className={`px-3 lg:px-4 py-2 rounded-full text-[10px] lg:text-xs font-bold uppercase tracking-wider flex items-center gap-2 transition-all whitespace-nowrap
                         ${activeTab === tab.id ? 'bg-lumina-accent text-lumina-base shadow-lg shadow-lumina-accent/20' : 'text-lumina-muted hover:text-white hover:bg-lumina-highlight'}
                     `}
                 >
@@ -579,7 +337,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
         </div>
 
         {/* CONTENT */}
-        <div className="flex-1 overflow-y-auto custom-scrollbar bg-lumina-base/50 p-6 pb-24">
+        <div className="flex-1 overflow-y-auto custom-scrollbar bg-lumina-base/50 p-4 lg:p-6 pb-24">
             
             {activeTab === 'OVERVIEW' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -598,7 +356,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         </div>
 
                         {isLogisticsEditing ? (
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div>
                                     <label className="text-xs text-lumina-muted block mb-1">Date</label>
                                     <input type="date" className="w-full bg-lumina-base border border-lumina-highlight rounded p-2 text-white" value={logisticsForm.date} onChange={e => setLogisticsForm({...logisticsForm, date: e.target.value})} />
@@ -641,14 +399,14 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         )}
                         
                         {showOvertimePrompt && (
-                            <Motion.div initial={{opacity:0}} animate={{opacity:1}} className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex justify-between items-center">
+                            <Motion.div initial={{opacity:0}} animate={{opacity:1}} className="mt-4 p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2">
                                 <div className="text-amber-200 text-xs">
                                     <p className="font-bold flex items-center gap-2"><AlertTriangle size={12}/> Overtime Detected</p>
                                     <p>{revenueWarning}</p>
                                 </div>
                                 <button 
                                     onClick={() => setActiveTab('PROFITABILITY')}
-                                    className="text-xs font-bold bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded hover:bg-amber-500 hover:text-black transition-colors"
+                                    className="text-xs font-bold bg-amber-500/20 text-amber-400 px-3 py-1.5 rounded hover:bg-amber-500 hover:text-black transition-colors w-full lg:w-auto"
                                 >
                                     Add Charge
                                 </button>
@@ -656,14 +414,14 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         )}
 
                         {showWhatsAppPrompt && (
-                            <Motion.div initial={{opacity:0}} animate={{opacity:1}} className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex justify-between items-center">
+                            <Motion.div initial={{opacity:0}} animate={{opacity:1}} className="mt-4 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-xl flex flex-col lg:flex-row justify-between items-start lg:items-center gap-2">
                                 <div className="text-emerald-200 text-xs">
                                     <p className="font-bold flex items-center gap-2"><MessageCircle size={12}/> Job Completed</p>
                                     <p>Send Thank You message & Delivery Link?</p>
                                 </div>
                                 <button 
                                     onClick={handleQuickWhatsApp}
-                                    className="text-xs font-bold bg-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded hover:bg-emerald-500 hover:text-black transition-colors"
+                                    className="text-xs font-bold bg-emerald-500/20 text-emerald-400 px-3 py-1.5 rounded hover:bg-emerald-500 hover:text-black transition-colors w-full lg:w-auto"
                                 >
                                     Send WA
                                 </button>
@@ -707,7 +465,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6 max-w-3xl mx-auto">
                     <div className="flex gap-2 mb-6">
                         <input 
-                            className="flex-1 bg-lumina-base border border-lumina-highlight rounded-xl px-4 text-sm text-white focus:border-lumina-accent outline-none"
+                            className="flex-1 bg-lumina-base border border-lumina-highlight rounded-xl px-4 py-3 text-sm text-white focus:border-lumina-accent outline-none"
                             placeholder="Add a new task..."
                             value={newTaskTitle}
                             onChange={e => setNewTaskTitle(e.target.value)}
@@ -734,7 +492,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                         const newTasks = booking.tasks?.filter(t => t.id !== task.id);
                                         onUpdateBooking({...booking, tasks: newTasks});
                                     }}
-                                    className="text-lumina-muted hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="text-lumina-muted hover:text-rose-500 lg:opacity-0 group-hover:opacity-100 transition-opacity"
                                 >
                                     <Trash2 size={14}/>
                                 </button>
@@ -754,7 +512,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         <h3 className="font-bold text-white mb-4 flex items-center gap-2"><HardDrive size={18} className="text-lumina-accent"/> Project Files</h3>
                         
                         {/* Drive Link Section */}
-                        <div className="p-4 bg-lumina-base border border-lumina-highlight rounded-xl flex justify-between items-center mb-6">
+                        <div className="p-4 bg-lumina-base border border-lumina-highlight rounded-xl flex flex-col lg:flex-row justify-between items-start lg:items-center mb-6 gap-4">
                             <div className="flex items-center gap-3">
                                 <div className="w-10 h-10 bg-white rounded-lg flex items-center justify-center">
                                     <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" className="w-6 h-6" />
@@ -768,15 +526,15 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                     )}
                                 </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex gap-2 w-full lg:w-auto">
                                 {booking.deliveryUrl ? (
-                                    <a href={booking.deliveryUrl} target="_blank" className="px-4 py-2 bg-lumina-surface border border-lumina-highlight hover:bg-lumina-highlight text-white text-xs font-bold rounded-lg transition-colors">
+                                    <a href={booking.deliveryUrl} target="_blank" className="flex-1 text-center px-4 py-2 bg-lumina-surface border border-lumina-highlight hover:bg-lumina-highlight text-white text-xs font-bold rounded-lg transition-colors">
                                         Open Folder
                                     </a>
                                 ) : (
                                     <button 
                                         onClick={() => setShowDrivePicker(true)}
-                                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center gap-2"
+                                        className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-colors flex items-center justify-center gap-2"
                                     >
                                         <Plus size={14}/> Create / Link Folder
                                     </button>
@@ -835,9 +593,9 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6 min-h-[400px]">
                     <div className="flex justify-between items-center mb-6">
                         <div>
-                            <h3 className="font-bold text-white flex items-center gap-2"><Eye size={18} className="text-lumina-accent"/> Client Proofing Portal</h3>
+                            <h3 className="font-bold text-white flex items-center gap-2"><Eye size={18} className="text-lumina-accent"/> Proofing</h3>
                             <p className="text-xs text-lumina-muted mt-1">
-                                {proofingFiles.length > 0 ? `Displaying ${proofingFiles.length} images from connected Drive folder.` : 'No images found in linked folder.'}
+                                {proofingFiles.length > 0 ? `${proofingFiles.length} images linked.` : 'No images found.'}
                             </p>
                         </div>
                         <button onClick={fetchProofingFiles} className="p-2 bg-lumina-highlight hover:bg-white hover:text-black rounded-lg transition-colors" title="Refresh">
@@ -849,7 +607,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                         <div className="p-10 text-center border border-dashed border-lumina-highlight rounded-xl bg-lumina-base/20">
                             <HardDrive size={32} className="text-lumina-muted mx-auto mb-4"/>
                             <p className="text-sm text-white font-bold mb-2">No Drive Folder Linked</p>
-                            <p className="text-xs text-lumina-muted mb-4">Connect a Google Drive folder in the 'Files & Delivery' tab to start proofing.</p>
+                            <p className="text-xs text-lumina-muted mb-4">Connect a Google Drive folder in the 'Files' tab to start proofing.</p>
                             <button onClick={() => setActiveTab('TIMELINE')} className="text-xs text-lumina-accent hover:underline">Go to Files</button>
                         </div>
                     ) : isLoadingProofing ? (
@@ -909,93 +667,22 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 </div>
             )}
 
-            {activeTab === 'PROFITABILITY' && (
-                <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6 max-w-4xl mx-auto">
-                    <h3 className="font-bold text-white mb-6 flex items-center gap-2"><PieChart size={18} className="text-emerald-400"/> Project Financials</h3>
-                    
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                        <div className="p-4 bg-lumina-base rounded-xl border border-lumina-highlight">
-                            <p className="text-xs text-lumina-muted uppercase font-bold">Revenue</p>
-                            <p className="text-xl font-mono font-bold text-white mt-1">Rp {booking.price.toLocaleString()}</p>
-                        </div>
-                        <div className="p-4 bg-lumina-base rounded-xl border border-lumina-highlight">
-                            <p className="text-xs text-lumina-muted uppercase font-bold">Expenses (COGS)</p>
-                            <p className="text-xl font-mono font-bold text-rose-400 mt-1">
-                                Rp {(booking.items?.reduce((sum, i) => sum + (i.cost || 0), 0) || 0).toLocaleString()}
-                            </p>
-                        </div>
-                        <div className="p-4 bg-lumina-base rounded-xl border border-lumina-highlight">
-                            <p className="text-xs text-lumina-muted uppercase font-bold">Net Profit</p>
-                            <p className="text-xl font-mono font-bold text-emerald-400 mt-1">
-                                Rp {(booking.price - (booking.items?.reduce((sum, i) => sum + (i.cost || 0), 0) || 0)).toLocaleString()}
-                            </p>
-                        </div>
-                    </div>
-
-                    <div className="space-y-4">
-                        <h4 className="text-xs font-bold text-lumina-muted uppercase border-b border-lumina-highlight pb-2">Line Items & Costs</h4>
-                        {booking.items?.map((item, idx) => (
-                            <div key={idx} className="flex justify-between items-center text-sm p-2 hover:bg-lumina-base rounded">
-                                <div>
-                                    <p className="font-bold text-white">{item.description}</p>
-                                    <p className="text-xs text-lumina-muted">Qty: {item.quantity} x {item.unitPrice.toLocaleString()}</p>
-                                </div>
-                                <div className="text-right">
-                                    <p className="text-white font-mono">Rp {item.total.toLocaleString()}</p>
-                                    <p className="text-xs text-rose-400 font-mono">Cost: Rp {(item.cost || 0).toLocaleString()}</p>
-                                </div>
-                            </div>
-                        ))}
-                        
-                        {/* Quick Add Item */}
-                        <div className="flex gap-2 mt-4">
-                            <input placeholder="Item desc" className="flex-[2] bg-lumina-base border border-lumina-highlight rounded px-2 py-1 text-xs text-white" 
-                                value={newLineItem.description} onChange={e => setNewLineItem({...newLineItem, description: e.target.value})} />
-                            <input placeholder="Price" type="number" className="flex-1 bg-lumina-base border border-lumina-highlight rounded px-2 py-1 text-xs text-white" 
-                                value={newLineItem.unitPrice || ''} onChange={e => setNewLineItem({...newLineItem, unitPrice: Number(e.target.value)})} />
-                            <input placeholder="Cost" type="number" className="flex-1 bg-lumina-base border border-lumina-highlight rounded px-2 py-1 text-xs text-white" 
-                                value={newLineItem.cost || ''} onChange={e => setNewLineItem({...newLineItem, cost: Number(e.target.value)})} />
-                            <button 
-                                onClick={() => {
-                                    if(newLineItem.description && newLineItem.unitPrice) {
-                                        const item: BookingItem = {
-                                            id: `i-${Date.now()}`,
-                                            description: newLineItem.description,
-                                            quantity: 1,
-                                            unitPrice: Number(newLineItem.unitPrice),
-                                            total: Number(newLineItem.unitPrice),
-                                            cost: Number(newLineItem.cost || 0)
-                                        };
-                                        onUpdateBooking({...booking, items: [...(booking.items || []), item]});
-                                        setNewLineItem({description:'', unitPrice:0, cost:0});
-                                    }
-                                }}
-                                className="bg-emerald-500 text-white px-3 rounded font-bold text-xs"
-                            >
-                                Add
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
-
             {/* DRIVE PICKER MODAL (Nested) */}
             <AnimatePresence>
                 {showDrivePicker && (
-                    <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-8">
+                    <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
                         <Motion.div 
                             initial={{ scale: 0.95, opacity: 0 }}
                             animate={{ scale: 1, opacity: 1 }}
                             exit={{ scale: 0.95, opacity: 0 }}
-                            className="bg-lumina-surface border border-lumina-highlight w-full max-w-2xl rounded-xl shadow-2xl flex flex-col max-h-[600px]"
+                            className="bg-lumina-surface border border-lumina-highlight w-full max-w-lg rounded-xl shadow-2xl flex flex-col max-h-[80vh]"
                         >
                             <div className="p-4 border-b border-lumina-highlight flex justify-between items-center bg-lumina-base rounded-t-xl">
                                 <div>
-                                    <h3 className="font-bold text-white flex items-center gap-2">
-                                        <img src="https://upload.wikimedia.org/wikipedia/commons/1/12/Google_Drive_icon_%282020%29.svg" className="w-5 h-5" />
-                                        Select Project Folder
+                                    <h3 className="font-bold text-white flex items-center gap-2 text-sm">
+                                        Select Drive Folder
                                     </h3>
-                                    <div className="flex items-center gap-1 text-xs text-lumina-muted mt-1">
+                                    <div className="flex items-center gap-1 text-xs text-lumina-muted mt-1 overflow-x-auto no-scrollbar max-w-[200px]">
                                         {driveBreadcrumbs.map((crumb, i) => (
                                             <React.Fragment key={crumb.id}>
                                                 <span 
@@ -1003,7 +690,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                                         setDriveBreadcrumbs(prev => prev.slice(0, i + 1));
                                                         setActiveMenuId(null);
                                                     }}
-                                                    className="hover:text-white cursor-pointer hover:underline"
+                                                    className="hover:text-white cursor-pointer hover:underline whitespace-nowrap"
                                                 >
                                                     {crumb.name}
                                                 </span>
@@ -1058,7 +745,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                                         <div className="flex items-center gap-2" onClick={e => e.stopPropagation()}>
                                                             <input 
                                                                 autoFocus
-                                                                className="bg-black border border-lumina-accent rounded px-2 py-0.5 text-sm text-white"
+                                                                className="bg-black border border-lumina-accent rounded px-2 py-0.5 text-sm text-white w-32"
                                                                 value={renameInput}
                                                                 onChange={e => setRenameInput(e.target.value)}
                                                                 onKeyDown={e => e.key === 'Enter' && renameItem()}
@@ -1072,7 +759,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                                 
                                                 <div className="relative" onClick={e => e.stopPropagation()}>
                                                     <button 
-                                                        className="p-1 text-lumina-muted hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                                        className="p-1 text-lumina-muted hover:text-white lg:opacity-0 group-hover:opacity-100 transition-opacity"
                                                         onClick={() => setActiveMenuId(activeMenuId === folder.id ? null : folder.id)}
                                                     >
                                                         <MoreVertical size={14} />
@@ -1094,10 +781,9 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                             </div>
 
                             <div className="p-4 border-t border-lumina-highlight bg-lumina-base rounded-b-xl flex justify-between items-center">
-                                <p className="text-xs text-lumina-muted">Current: <span className="text-white font-bold">{driveBreadcrumbs[driveBreadcrumbs.length-1].name}</span></p>
                                 <button 
                                     onClick={handleLinkDriveFolder}
-                                    className="px-4 py-2 bg-lumina-accent text-lumina-base font-bold text-xs rounded-lg hover:bg-lumina-accent/90"
+                                    className="w-full px-4 py-3 bg-lumina-accent text-lumina-base font-bold text-sm rounded-lg hover:bg-lumina-accent/90"
                                 >
                                     Select This Folder
                                 </button>
@@ -1110,17 +796,17 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
         </div>
 
         {/* STICKY QUICK ACTIONS FOOTER */}
-        <div className="border-t border-lumina-highlight bg-lumina-base p-4 flex justify-between items-center">
-            <div className="text-[10px] text-lumina-muted uppercase tracking-wider">Quick Actions</div>
-            <div className="flex gap-2">
-                <button onClick={() => setActiveTab('TIMELINE')} className="flex items-center gap-2 px-4 py-2 bg-lumina-surface border border-lumina-highlight rounded-xl hover:bg-lumina-highlight text-white text-xs font-bold transition-colors">
+        <div className="border-t border-lumina-highlight bg-lumina-base p-3 lg:p-4 flex justify-between items-center shrink-0 pb-safe-area-bottom lg:pb-4">
+            <div className="hidden lg:block text-[10px] text-lumina-muted uppercase tracking-wider">Quick Actions</div>
+            <div className="flex gap-2 w-full lg:w-auto">
+                <button onClick={() => setActiveTab('TIMELINE')} className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-4 py-3 lg:py-2 bg-lumina-surface border border-lumina-highlight rounded-xl hover:bg-lumina-highlight text-white text-xs font-bold transition-colors">
                     <Upload size={14}/> Upload
                 </button>
-                <button onClick={handleQuickWhatsApp} className="flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl hover:bg-emerald-500 hover:text-white text-emerald-400 text-xs font-bold transition-colors">
+                <button onClick={handleQuickWhatsApp} className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-4 py-3 lg:py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-xl hover:bg-emerald-500 hover:text-white text-emerald-400 text-xs font-bold transition-colors">
                     <MessageCircle size={14}/> WhatsApp
                 </button>
-                <button onClick={handleCopyPortalLink} className="flex items-center gap-2 px-4 py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl hover:bg-blue-500 hover:text-white text-blue-400 text-xs font-bold transition-colors">
-                    <Copy size={14}/> Copy Portal Link
+                <button onClick={handleCopyPortalLink} className="flex-1 lg:flex-none flex items-center justify-center gap-2 px-4 py-3 lg:py-2 bg-blue-500/10 border border-blue-500/20 rounded-xl hover:bg-blue-500 hover:text-white text-blue-400 text-xs font-bold transition-colors">
+                    <Copy size={14}/> Link
                 </button>
             </div>
         </div>

@@ -17,6 +17,9 @@ export interface User {
   ownerId?: string;
   studioId?: string; 
   archived?: boolean;
+  // ONBOARDING FIELDS
+  hasCompletedOnboarding?: boolean;
+  studioFocus?: string;
 }
 
 // ... (Keep all existing interfaces exactly as they are until SidebarProps) ...

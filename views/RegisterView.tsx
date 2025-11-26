@@ -62,10 +62,12 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onLoginLink, onRegisterSucc
           avatar: user.photoURL || '',
           phone: '',
           status: 'ACTIVE',
-          joinedDate: new Date().toISOString()
+          joinedDate: new Date().toISOString(),
+          hasCompletedOnboarding: false, // Start Flow
+          studioFocus: ''
       };
 
-      // 4. Try to create Firestore document (Non-blocking)
+      // 4. Create Firestore document
       try {
           const newUserProfile = {
               uid: user.uid,
@@ -76,13 +78,12 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onLoginLink, onRegisterSucc
               createdAt: new Date().toISOString(),
               phone: '',
               status: 'ACTIVE',
-              avatar: user.photoURL
+              avatar: user.photoURL,
+              hasCompletedOnboarding: false
           };
-          // Force write even if offline
           await setDoc(doc(db, "users", user.uid), newUserProfile);
       } catch (fsError) {
-          console.warn("Firestore Profile Creation Failed (Likely Offline or Permission Issue):", fsError);
-          // We proceed anyway because Auth succeeded
+          console.warn("Firestore Profile Creation Failed:", fsError);
       }
 
       onRegisterSuccess(appUser);
@@ -106,48 +107,39 @@ const RegisterView: React.FC<RegisterViewProps> = ({ onLoginLink, onRegisterSucc
           const result = await signInWithPopup(auth, googleProvider);
           const user = result.user;
 
-          // Check if user doc already exists
           try {
               const docRef = doc(db, "users", user.uid);
               const docSnap = await getDoc(docRef);
 
               if (!docSnap.exists()) {
-                  // Create new profile for Google user
                   const newUserProfile = {
                       uid: user.uid,
                       name: user.displayName || 'User',
                       email: user.email,
                       role: 'OWNER',
-                      studioName: 'My Studio', // Default
+                      studioName: 'My Studio',
                       createdAt: new Date().toISOString(),
                       phone: '',
                       status: 'ACTIVE',
-                      avatar: user.photoURL
+                      avatar: user.photoURL,
+                      hasCompletedOnboarding: false
                   };
                   await setDoc(docRef, newUserProfile);
               }
           } catch (fsError) {
-              console.warn("Firestore Profile Check Failed (Likely Offline):", fsError);
-              // Proceed without DB
+              console.warn("Firestore Profile Check Failed:", fsError);
           }
           
-          // App.tsx onAuthStateChanged will handle the rest
+          // App.tsx onAuthStateChanged will handle navigation
       } catch (err: any) {
           console.error("Google Register Error:", err);
-          if (err.code === 'auth/unauthorized-domain') {
-              setError(`Domain not authorized. Add '${window.location.hostname}' to Firebase Console > Auth > Settings.`);
-          } else if (err.code === 'auth/popup-closed-by-user') {
-              setError("Sign-up cancelled.");
-          } else {
-              setError("Failed to sign up with Google.");
-          }
+          setError("Failed to sign up with Google.");
           setIsLoading(false);
       }
   };
 
   return (
     <div className="min-h-screen bg-lumina-base flex items-center justify-center relative overflow-hidden p-4">
-      {/* Cinematic Background */}
       <div className="absolute inset-0 z-0">
         <div className="absolute top-[-20%] right-[-10%] w-[60%] h-[60%] bg-emerald-500/10 rounded-full blur-[150px] animate-pulse"></div>
         <div className="absolute bottom-[-20%] left-[-10%] w-[50%] h-[50%] bg-lumina-accent/10 rounded-full blur-[150px]"></div>

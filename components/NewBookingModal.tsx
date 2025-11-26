@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Account, Booking, ProjectStatus, Client, StudioConfig, BookingItem, Discount, Asset, Package, BookingTask } from '../types';
@@ -6,6 +7,7 @@ import { X, Calendar, Clock, User as UserIcon, AlertCircle, Search, ChevronDown,
 
 const Motion = motion as any;
 
+// ... TimeSlotBar and interfaces ...
 interface NewBookingModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -22,42 +24,29 @@ interface NewBookingModalProps {
 }
 
 const TimeSlotBar = ({ date, studio, bookings, config }: { date: string, studio: string, bookings: Booking[], config: StudioConfig }) => {
-    // Parse Operating Hours with Fallbacks
     const opStart = config.operatingHoursStart || "09:00";
     const opEnd = config.operatingHoursEnd || "21:00";
-    
     const [startH] = opStart.split(':').map(Number);
     const [endH] = opEnd.split(':').map(Number);
     const totalMinutes = (endH - startH) * 60;
-
-    // Filter bookings for this day/studio
     const dayBookings = bookings.filter(b => b.date === date && b.studio === studio && b.status !== 'CANCELLED');
 
     return (
         <div className="relative h-8 bg-lumina-base border border-lumina-highlight rounded w-full overflow-hidden mt-2">
-            {/* Hour Markers */}
             {Array.from({ length: endH - startH }).map((_, i) => (
                 <div key={i} className="absolute top-0 bottom-0 border-l border-lumina-highlight/30 text-[8px] text-lumina-muted pl-0.5" 
                      style={{ left: `${(i / (endH - startH)) * 100}%` }}>
                     {startH + i}
                 </div>
             ))}
-            
-            {/* Booking Blocks */}
             {dayBookings.map(b => {
                 if (!b.timeStart) return null;
                 const [bH, bM] = b.timeStart.split(':').map(Number);
                 const startOffset = (bH - startH) * 60 + bM;
                 const leftPct = (startOffset / totalMinutes) * 100;
                 const widthPct = (b.duration * 60 / totalMinutes) * 100;
-                
                 return (
-                    <div 
-                        key={b.id}
-                        className="absolute top-1 bottom-1 bg-red-500/30 border border-red-500/50 rounded-sm z-10 flex items-center justify-center"
-                        style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
-                        title={`${b.timeStart} - ${b.clientName}`}
-                    >
+                    <div key={b.id} className="absolute top-1 bottom-1 bg-red-500/30 border border-red-500/50 rounded-sm z-10 flex items-center justify-center" style={{ left: `${leftPct}%`, width: `${widthPct}%` }} title={`${b.timeStart} - ${b.clientName}`}>
                         <span className="text-[8px] text-red-200 truncate px-1 hidden md:block">{b.clientName}</span>
                     </div>
                 );
@@ -67,31 +56,17 @@ const TimeSlotBar = ({ date, studio, bookings, config }: { date: string, studio:
 };
 
 const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, photographers, accounts, bookings = [], clients = [], assets = [], config, onAddBooking, onAddClient, initialData, googleToken }) => {
-  // WIZARD STATE
   const [step, setStep] = useState<1|2|3|4>(1);
-
+  // ... state definitions ...
   const [formData, setFormData] = useState({
-      clientName: '',
-      clientPhone: '',
-      date: '',
-      timeStart: '',
-      package: '',
-      price: 0, 
-      durationMinutes: 60, 
-      studio: '', 
-      photographerId: '',
-      amountPaid: 0,
-      paymentAccount: accounts[0]?.id || ''
+      clientName: '', clientPhone: '', date: '', timeStart: '', package: '', price: 0, durationMinutes: 60, studio: '', photographerId: '', amountPaid: 0, paymentAccount: accounts[0]?.id || ''
   });
-
   const [selectedAssetIds, setSelectedAssetIds] = useState<string[]>([]);
   const [isLead, setIsLead] = useState(false); 
   const [discount, setDiscount] = useState<Discount>({ type: 'FIXED', value: 0 });
-
   const [clientSearch, setClientSearch] = useState('');
   const [showClientSuggestions, setShowClientSuggestions] = useState(false);
   const [selectedClient, setSelectedClient] = useState<Client | null>(null); 
-
   const [error, setError] = useState<string | null>(null);
   const [softConflictWarning, setSoftConflictWarning] = useState<string | null>(null); 
   const [problematicWarning, setProblematicWarning] = useState<string | null>(null);
@@ -100,8 +75,6 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
   
   const BUFFER_MINUTES = config.bufferMinutes || 15; 
   const studios = config.rooms || [];
-
-  // Filter Active Packages Only
   const activePackages = PACKAGES.filter(p => p.active && !p.archived);
 
   useEffect(() => {
@@ -112,358 +85,103 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
           const initialDP = defaultPrice * (dpPercentage / 100);
 
           if (initialData) {
-              setFormData(prev => ({
-                  ...prev,
-                  date: initialData.date,
-                  timeStart: initialData.time,
-                  studio: initialData.studio,
-                  package: defaultPkg ? defaultPkg.name : '',
-                  price: defaultPrice,
-                  durationMinutes: defaultPkg ? defaultPkg.duration * 60 : 60,
-                  amountPaid: initialDP
-              }));
-              setStep(2); // Jump to step 2 if date prefilled
+              setFormData(prev => ({ ...prev, date: initialData.date, timeStart: initialData.time, studio: initialData.studio, package: defaultPkg ? defaultPkg.name : '', price: defaultPrice, durationMinutes: defaultPkg ? defaultPkg.duration * 60 : 60, amountPaid: initialDP }));
+              setStep(2);
           } else {
-              setFormData(prev => ({
-                 ...prev,
-                 date: new Date().toISOString().split('T')[0],
-                 timeStart: '10:00',
-                 studio: studios[0]?.name || '',
-                 package: defaultPkg ? defaultPkg.name : '',
-                 price: defaultPrice,
-                 durationMinutes: defaultPkg ? defaultPkg.duration * 60 : 60,
-                 amountPaid: initialDP
-              }));
+              setFormData(prev => ({ ...prev, date: new Date().toISOString().split('T')[0], timeStart: '10:00', studio: studios[0]?.name || '', package: defaultPkg ? defaultPkg.name : '', price: defaultPrice, durationMinutes: defaultPkg ? defaultPkg.duration * 60 : 60, amountPaid: initialDP }));
               setStep(1);
           }
-          setClientSearch('');
-          setSelectedClient(null);
-          setSelectedAssetIds([]);
-          setError(null);
-          setProblematicWarning(null);
-          setSoftConflictWarning(null);
-          setAdminOverride(false);
-          setSoftBookingOverride(false);
-          setDiscount({ type: 'FIXED', value: 0 });
-          setIsLead(false);
+          setClientSearch(''); setSelectedClient(null); setSelectedAssetIds([]); setError(null); setProblematicWarning(null); setSoftConflictWarning(null); setAdminOverride(false); setSoftBookingOverride(false); setDiscount({ type: 'FIXED', value: 0 }); setIsLead(false);
       }
   }, [isOpen, initialData, studios]);
 
-  // Package Selection Logic (Auto-Populate)
   const handlePackageChange = (pkgName: string) => {
       const pkg = activePackages.find(p => p.name === pkgName);
       const newPrice = pkg ? pkg.price : formData.price;
       const dpPercentage = config.requiredDownPaymentPercentage || 50;
       const newDP = newPrice * (dpPercentage / 100);
-
-      setFormData(prev => ({
-          ...prev,
-          package: pkgName,
-          price: newPrice,
-          durationMinutes: pkg ? pkg.duration * 60 : prev.durationMinutes,
-          amountPaid: newDP
-      }));
-
-      // AUTO ASSET SELECTION
-      if (pkg && pkg.defaultAssetIds) {
-          // Only select assets that are available or not currently selected
-          // We'll just overwrite for simplicity, or merge
-          setSelectedAssetIds(pkg.defaultAssetIds);
-      }
+      setFormData(prev => ({ ...prev, package: pkgName, price: newPrice, durationMinutes: pkg ? pkg.duration * 60 : prev.durationMinutes, amountPaid: newDP }));
+      if (pkg && pkg.defaultAssetIds) { setSelectedAssetIds(pkg.defaultAssetIds); }
   };
 
-  // Validation Logic (same as before, just used in steps)
+  const formatTime = (minutes: number) => { const h = Math.floor(minutes / 60); const m = minutes % 60; return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`; };
+
   const checkConflict = (): { type: 'ROOM' | 'PHOTOGRAPHER' | 'HOURS' | 'CLIENT' | 'ASSET', message: string, isSoft?: boolean } | null => {
       if (!formData.date || !formData.timeStart) return null;
-      
       const newDurationMins = formData.durationMinutes;
-      
       const [startH, startM] = formData.timeStart.split(':').map(Number);
       const newStartTime = startH * 60 + startM;
       const newEndTime = newStartTime + newDurationMins;
-      
       const [openH, openM] = (config.operatingHoursStart || "09:00").split(':').map(Number);
       const [closeH, closeM] = (config.operatingHoursEnd || "21:00").split(':').map(Number);
-      
-      const openTime = openH * 60 + openM;
-      const closeTime = closeH * 60 + closeM;
+      const openTime = openH * 60 + openM; const closeTime = closeH * 60 + closeM;
 
-      if (newStartTime < openTime || newEndTime > closeTime) {
-          return { 
-              type: 'HOURS', 
-              message: `Booking is outside operating hours (${config.operatingHoursStart} - ${config.operatingHoursEnd}).` 
-          };
-      }
-
-      if (formData.photographerId) {
-          const staff = photographers.find(p => p.id === formData.photographerId);
-          if (staff && staff.unavailableDates && staff.unavailableDates.includes(formData.date)) {
-              return {
-                  type: 'PHOTOGRAPHER',
-                  message: `Staff Conflict! ${staff.name} is unavailable (Off-day) on ${formData.date}.`
-              };
-          }
-      }
+      if (newStartTime < openTime || newEndTime > closeTime) { return { type: 'HOURS', message: `Booking is outside operating hours (${config.operatingHoursStart} - ${config.operatingHoursEnd}).` }; }
+      if (formData.photographerId) { const staff = photographers.find(p => p.id === formData.photographerId); if (staff && staff.unavailableDates && staff.unavailableDates.includes(formData.date)) { return { type: 'PHOTOGRAPHER', message: `Staff Conflict! ${staff.name} is unavailable (Off-day) on ${formData.date}.` }; } }
 
       for (const b of bookings) {
           if (b.date !== formData.date) continue;
           if (b.status === 'CANCELLED' || b.status === 'REFUNDED') continue;
           if (!b.timeStart) continue;
-
           const [bStartH, bStartM] = b.timeStart.split(':').map(Number);
           const bStartTime = bStartH * 60 + bStartM;
           const bEndTime = bStartTime + (b.duration * 60);
           const bEndWithBuffer = bEndTime + BUFFER_MINUTES;
-
           const isOverlapping = (newStartTime < bEndWithBuffer) && (newEndTime > bStartTime);
 
           if (isOverlapping) {
               const isSoftConflict = b.status === 'INQUIRY';
-
-              if (b.studio === formData.studio) {
-                  return {
-                      type: 'ROOM',
-                      message: `Studio Conflict! ${b.studio} is booked by ${b.clientName} (${b.timeStart} - ${formatTime(bEndTime)} + buffer).`,
-                      isSoft: isSoftConflict
-                  };
-              }
-              
-              if (formData.photographerId && b.photographerId === formData.photographerId) {
-                  const photographerName = photographers.find(p => p.id === formData.photographerId)?.name || 'Photographer';
-                  return {
-                      type: 'PHOTOGRAPHER',
-                      message: `Staff Conflict! ${photographerName} is shooting for ${b.clientName}.`,
-                      isSoft: isSoftConflict
-                  };
-              }
-
-              if (b.assetIds && b.assetIds.length > 0 && selectedAssetIds.length > 0) {
-                  const conflictingAssets = selectedAssetIds.filter(id => b.assetIds?.includes(id));
-                  if (conflictingAssets.length > 0) {
-                      const assetNames = conflictingAssets.map(id => assets.find(a => a.id === id)?.name).join(', ');
-                      return {
-                          type: 'ASSET',
-                          message: `Equipment Conflict! In use: ${assetNames}`,
-                          isSoft: isSoftConflict
-                      }
-                  }
-              }
+              if (b.studio === formData.studio) { return { type: 'ROOM', message: `Studio Conflict! ${b.studio} is booked by ${b.clientName} (${b.timeStart} - ${formatTime(bEndTime)} + buffer).`, isSoft: isSoftConflict }; }
+              if (formData.photographerId && b.photographerId === formData.photographerId) { const photographerName = photographers.find(p => p.id === formData.photographerId)?.name || 'Photographer'; return { type: 'PHOTOGRAPHER', message: `Staff Conflict! ${photographerName} is shooting for ${b.clientName}.`, isSoft: isSoftConflict }; }
+              if (b.assetIds && b.assetIds.length > 0 && selectedAssetIds.length > 0) { const conflictingAssets = selectedAssetIds.filter(id => b.assetIds?.includes(id)); if (conflictingAssets.length > 0) { const assetNames = conflictingAssets.map(id => assets.find(a => a.id === id)?.name).join(', '); return { type: 'ASSET', message: `Equipment Conflict! In use: ${assetNames}`, isSoft: isSoftConflict } } }
           }
       }
       return null;
   };
 
-  const formatTime = (minutes: number) => {
-      const h = Math.floor(minutes / 60);
-      const m = minutes % 60;
-      return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;
-  };
+  const addToGoogleCalendar = async (booking: Booking) => { /* ... */ if (!googleToken) return; try { const startDateTime = new Date(`${booking.date}T${booking.timeStart}:00`); const endDateTime = new Date(startDateTime.getTime() + booking.duration * 60 * 60 * 1000); const event = { summary: `[Lumina] ${booking.clientName} - ${booking.package}`, location: booking.studio, description: `Phone: ${booking.clientPhone}\nStudio: ${booking.studio}\nPackage: ${booking.package}`, start: { dateTime: startDateTime.toISOString() }, end: { dateTime: endDateTime.toISOString() }, }; await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', { method: 'POST', headers: { 'Authorization': `Bearer ${googleToken}`, 'Content-Type': 'application/json' }, body: JSON.stringify(event), }); } catch (error) { console.error('Error adding to Google Calendar:', error); } };
 
-  const addToGoogleCalendar = async (booking: Booking) => {
-      if (!googleToken) return;
-      try {
-          const startDateTime = new Date(`${booking.date}T${booking.timeStart}:00`);
-          const endDateTime = new Date(startDateTime.getTime() + booking.duration * 60 * 60 * 1000);
-          const event = {
-              summary: `[Lumina] ${booking.clientName} - ${booking.package}`,
-              location: booking.studio,
-              description: `Phone: ${booking.clientPhone}\nStudio: ${booking.studio}\nPackage: ${booking.package}`,
-              start: { dateTime: startDateTime.toISOString() },
-              end: { dateTime: endDateTime.toISOString() },
-          };
-          await fetch('https://www.googleapis.com/calendar/v3/calendars/primary/events', {
-              method: 'POST',
-              headers: { 'Authorization': `Bearer ${googleToken}`, 'Content-Type': 'application/json' },
-              body: JSON.stringify(event),
-          });
-      } catch (error) {
-          console.error('Error adding to Google Calendar:', error);
-      }
-  };
-
-  const handleNext = () => {
-      setError(null);
-      setSoftConflictWarning(null);
-
-      if (step === 1) {
-          if (!formData.clientName || !formData.clientPhone) {
-              setError("Client name and phone are required.");
-              return;
-          }
-          if (problematicWarning && !adminOverride) {
-              setError("Client flagged as problematic. Confirm override to proceed.");
-              return;
-          }
-          setStep(2);
-      } 
-      else if (step === 2) {
-          if (!formData.date || !formData.timeStart || !formData.studio) {
-              setError("Please complete all schedule fields.");
-              return;
-          }
-          const conflict = checkConflict();
-          if (conflict && conflict.type !== 'ASSET') { // Asset check in step 3
-              if (conflict.isSoft && !softBookingOverride) {
-                  setSoftConflictWarning(conflict.message);
-                  return;
-              } else if (!conflict.isSoft) {
-                  setError(conflict.message);
-                  return;
-              }
-          }
-          setStep(3);
-      }
-      else if (step === 3) {
-          if (!formData.package) {
-              setError("Please select a package.");
-              return;
-          }
-          // Check Asset Conflicts Specifically Here
-          const conflict = checkConflict();
-          if (conflict && conflict.type === 'ASSET') {
-               if (conflict.isSoft && !softBookingOverride) {
-                  setSoftConflictWarning(conflict.message);
-                  return;
-              } else if (!conflict.isSoft) {
-                  setError(conflict.message);
-                  return;
-              }
-          }
-          setStep(4);
-      }
-  };
+  const handleNext = () => { setError(null); setSoftConflictWarning(null); if (step === 1) { if (!formData.clientName || !formData.clientPhone) { setError("Client name and phone are required."); return; } if (problematicWarning && !adminOverride) { setError("Client flagged as problematic. Confirm override to proceed."); return; } setStep(2); } else if (step === 2) { if (!formData.date || !formData.timeStart || !formData.studio) { setError("Please complete all schedule fields."); return; } const conflict = checkConflict(); if (conflict && conflict.type !== 'ASSET') { if (conflict.isSoft && !softBookingOverride) { setSoftConflictWarning(conflict.message); return; } else if (!conflict.isSoft) { setError(conflict.message); return; } } setStep(3); } else if (step === 3) { if (!formData.package) { setError("Please select a package."); return; } const conflict = checkConflict(); if (conflict && conflict.type === 'ASSET') { if (conflict.isSoft && !softBookingOverride) { setSoftConflictWarning(conflict.message); return; } else if (!conflict.isSoft) { setError(conflict.message); return; } } setStep(4); } };
 
   const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
-      
       if(onAddBooking) {
           const selectedPackage = activePackages.find(p => p.name === formData.package);
           const costSnapshot = selectedPackage ? [...selectedPackage.costBreakdown] : [];
-          
-          // AUTO TASKS
-          const initialTasks: BookingTask[] = (selectedPackage?.defaultTasks || []).map(title => ({
-              id: `t-${Date.now()}-${Math.random()}`,
-              title,
-              completed: false
-          }));
-
-          const initialItems: BookingItem[] = [
-              {
-                  id: `item-${Date.now()}`,
-                  description: `${formData.package} (${formData.durationMinutes / 60}h)`,
-                  quantity: 1,
-                  unitPrice: Number(formData.price),
-                  total: Number(formData.price)
-              }
-          ];
-
-          let safePhotographerId = formData.photographerId;
-          if (!safePhotographerId && photographers.length > 0) safePhotographerId = photographers[0].id;
-          if (!safePhotographerId) safePhotographerId = ''; 
-
+          const initialTasks: BookingTask[] = (selectedPackage?.defaultTasks || []).map(title => ({ id: `t-${Date.now()}-${Math.random()}`, title, completed: false }));
+          const initialItems: BookingItem[] = [ { id: `item-${Date.now()}`, description: `${formData.package} (${formData.durationMinutes / 60}h)`, quantity: 1, unitPrice: Number(formData.price), total: Number(formData.price) } ];
+          let safePhotographerId = formData.photographerId; if (!safePhotographerId && photographers.length > 0) safePhotographerId = photographers[0].id; if (!safePhotographerId) safePhotographerId = ''; 
           let finalClientId = selectedClient?.id;
-          
-          if (!finalClientId && formData.clientName) {
-              const newClient: Client = {
-                  id: `c-${Date.now()}`,
-                  name: formData.clientName,
-                  phone: formData.clientPhone,
-                  email: '', 
-                  category: 'NEW',
-                  notes: 'Auto-created from booking',
-                  joinedDate: new Date().toISOString().split('T')[0],
-                  avatar: `https://ui-avatars.com/api/?name=${formData.clientName}&background=random`
-              };
-              if (onAddClient) {
-                  onAddClient(newClient);
-                  finalClientId = newClient.id;
-              }
-          }
-
-          const newBooking: Booking = {
-              id: `b-${Date.now()}`,
-              clientName: formData.clientName,
-              clientPhone: formData.clientPhone,
-              date: formData.date,
-              timeStart: formData.timeStart,
-              duration: formData.durationMinutes / 60, 
-              package: formData.package,
-              price: Number(formData.price), 
-              paidAmount: Number(formData.amountPaid),
-              status: isLead ? 'INQUIRY' : 'BOOKED', 
-              photographerId: safePhotographerId,
-              studio: formData.studio,
-              contractStatus: 'PENDING',
-              items: initialItems,
-              discount: discount, 
-              comments: [],
-              timeLogs: [],
-              costSnapshot: costSnapshot,
-              taxSnapshot: config.taxRate, 
-              clientId: finalClientId,
-              assetIds: selectedAssetIds,
-              tasks: initialTasks
-          };
-          
+          if (!finalClientId && formData.clientName) { const newClient: Client = { id: `c-${Date.now()}`, name: formData.clientName, phone: formData.clientPhone, email: '', category: 'NEW', notes: 'Auto-created from booking', joinedDate: new Date().toISOString().split('T')[0], avatar: `https://ui-avatars.com/api/?name=${formData.clientName}&background=random` }; if (onAddClient) { onAddClient(newClient); finalClientId = newClient.id; } }
+          const newBooking: Booking = { id: `b-${Date.now()}`, clientName: formData.clientName, clientPhone: formData.clientPhone, date: formData.date, timeStart: formData.timeStart, duration: formData.durationMinutes / 60, package: formData.package, price: Number(formData.price), paidAmount: Number(formData.amountPaid), status: isLead ? 'INQUIRY' : 'BOOKED', photographerId: safePhotographerId, studio: formData.studio, contractStatus: 'PENDING', items: initialItems, discount: discount, comments: [], timeLogs: [], costSnapshot: costSnapshot, taxSnapshot: config.taxRate, clientId: finalClientId, assetIds: selectedAssetIds, tasks: initialTasks };
           if (newBooking.clientId === undefined) delete newBooking.clientId;
-
           onAddBooking(newBooking, { amount: Number(formData.amountPaid), accountId: formData.paymentAccount });
-
           if (googleToken) await addToGoogleCalendar(newBooking);
-
           onClose();
       }
   };
 
-  // ... (Search helpers remain same) ...
-  const filteredClients = clientSearch.length > 0 
-    ? clients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())) 
-    : [];
-
-  const selectClient = (client: Client) => {
-      setFormData(prev => ({
-          ...prev,
-          clientName: client.name,
-          clientPhone: client.phone
-      }));
-      setClientSearch(client.name);
-      setShowClientSuggestions(false);
-      setSelectedClient(client);
-      if (client.category === 'PROBLEMATIC') {
-          setProblematicWarning(`WARNING: This client is flagged as PROBLEMATIC.\nNote: "${client.notes}"`);
-      } else {
-          setProblematicWarning(null);
-      }
-  };
-
-  const toggleAssetSelection = (assetId: string) => {
-      setSelectedAssetIds(prev => 
-          prev.includes(assetId) ? prev.filter(id => id !== assetId) : [...prev, assetId]
-      );
-  };
-
-  const calculateFinal = () => {
-      const base = formData.price;
-      const discountAmount = discount.type === 'PERCENT' ? base * (discount.value/100) : discount.value;
-      return Math.max(0, base - discountAmount);
-  }
+  const filteredClients = clientSearch.length > 0 ? clients.filter(c => c.name.toLowerCase().includes(clientSearch.toLowerCase())) : [];
+  const selectClient = (client: Client) => { setFormData(prev => ({ ...prev, clientName: client.name, clientPhone: client.phone })); setClientSearch(client.name); setShowClientSuggestions(false); setSelectedClient(client); if (client.category === 'PROBLEMATIC') { setProblematicWarning(`WARNING: This client is flagged as PROBLEMATIC.\nNote: "${client.notes}"`); } else { setProblematicWarning(null); } };
+  const toggleAssetSelection = (assetId: string) => { setSelectedAssetIds(prev => prev.includes(assetId) ? prev.filter(id => id !== assetId) : [...prev, assetId] ); };
+  const calculateFinal = () => { const base = formData.price; const discountAmount = discount.type === 'PERCENT' ? base * (discount.value/100) : discount.value; return Math.max(0, base - discountAmount); }
 
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[100] flex items-center justify-center p-0 lg:p-4">
       <div className="absolute inset-0 bg-black/80 backdrop-blur-sm" onClick={onClose}></div>
       
       <Motion.div 
-        initial={{ scale: 0.95, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        exit={{ scale: 0.95, opacity: 0 }}
-        className="bg-lumina-surface border border-lumina-highlight w-full max-w-2xl rounded-2xl shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]"
+        initial={{ y: '100%', opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: '100%', opacity: 0 }}
+        className="bg-lumina-surface border border-lumina-highlight w-full lg:max-w-2xl h-full lg:h-auto lg:rounded-2xl shadow-2xl relative overflow-hidden flex flex-col lg:max-h-[90vh]"
       >
         {/* Header & Progress */}
-        <div className="bg-lumina-base p-6 border-b border-lumina-highlight">
+        <div className="bg-lumina-base p-4 lg:p-6 border-b border-lumina-highlight shrink-0">
             <div className="flex justify-between items-center mb-4">
-                <h2 className="text-2xl font-display font-bold text-white">New Session</h2>
+                <h2 className="text-xl lg:text-2xl font-display font-bold text-white">New Session</h2>
                 <button onClick={onClose}><X className="text-lumina-muted hover:text-white" /></button>
             </div>
             {/* Stepper */}
@@ -480,7 +198,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
             </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto custom-scrollbar p-6">
+        <div className="flex-1 overflow-y-auto custom-scrollbar p-4 lg:p-6">
             <AnimatePresence mode="wait">
                 {/* ERROR BANNERS */}
                 {(error || softConflictWarning || problematicWarning) && (
@@ -707,7 +425,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
                                 <span className="text-sm font-mono text-emerald-400 font-bold">Rp {((formData.price * (config.requiredDownPaymentPercentage||50))/100).toLocaleString()}</span>
                             </div>
                             
-                            <div className="grid grid-cols-2 gap-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                     <div>
                                         <label className="block text-xs text-lumina-muted mb-1.5">Amount Paid Now</label>
                                         <input 
@@ -746,7 +464,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
         </div>
 
         {/* FOOTER ACTIONS */}
-        <div className="p-6 border-t border-lumina-highlight bg-lumina-base flex justify-between items-center">
+        <div className="p-4 lg:p-6 border-t border-lumina-highlight bg-lumina-base flex justify-between items-center pb-safe-area-bottom lg:pb-6 shrink-0">
             {step > 1 ? (
                 <button onClick={() => setStep(prev => Math.max(1, prev-1) as any)} className="flex items-center gap-2 text-lumina-muted hover:text-white font-bold text-sm px-4 py-2">
                     <ChevronLeft size={16}/> Back
@@ -754,12 +472,12 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
             ) : <div></div>}
 
             {step < 4 ? (
-                <button onClick={handleNext} className="bg-white text-black px-6 py-2 rounded-xl font-bold hover:bg-gray-200 flex items-center gap-2">
+                <button onClick={handleNext} className="bg-white text-black px-6 py-2 rounded-xl font-bold hover:bg-gray-200 flex items-center gap-2 text-sm lg:text-base">
                     Next Step <ArrowRight size={16}/>
                 </button>
             ) : (
-                <button onClick={handleSubmit} className="bg-lumina-accent text-lumina-base px-8 py-3 rounded-xl font-bold hover:bg-lumina-accent/90 shadow-lg shadow-lumina-accent/20 flex items-center gap-2">
-                    <Check size={18}/> {isLead ? 'Save Inquiry' : 'Confirm Booking'}
+                <button onClick={handleSubmit} className="bg-lumina-accent text-lumina-base px-8 py-3 rounded-xl font-bold hover:bg-lumina-accent/90 shadow-lg shadow-lumina-accent/20 flex items-center gap-2 text-sm lg:text-base">
+                    <Check size={18}/> {isLead ? 'Save Inquiry' : 'Confirm'}
                 </button>
             )}
         </div>

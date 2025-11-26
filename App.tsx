@@ -1,6 +1,8 @@
 
+// ... existing imports ...
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
+import MobileNav from './components/MobileNav';
 import AppLauncher from './components/AppLauncher';
 import DashboardView from './views/DashboardView';
 import FinanceView from './views/FinanceView';
@@ -16,13 +18,14 @@ import AnalyticsView from './views/AnalyticsView';
 import SiteBuilderView from './views/SiteBuilderView';
 import LandingPageView from './views/LandingPageView';
 import PublicSiteView from './views/PublicSiteView'; 
+import OnboardingView from './views/OnboardingView'; // Import new view
 import NewBookingModal from './components/NewBookingModal';
 import CommandPalette from './components/CommandPalette';
 import ProjectDrawer from './components/ProjectDrawer';
 import { USERS, ACCOUNTS as INITIAL_ACCOUNTS, BOOKINGS as INITIAL_BOOKINGS, ASSETS as INITIAL_ASSETS, TRANSACTIONS as INITIAL_TRANSACTIONS, PACKAGES as INITIAL_PACKAGES, CLIENTS as INITIAL_CLIENTS, NOTIFICATIONS, STUDIO_CONFIG as INITIAL_CONFIG } from './data';
 import { User, Booking, Asset, Notification, Account, Transaction, Client, Package, StudioConfig, BookingTask, ActivityLog, PublicBookingSubmission, StudioRoom, ProjectStatus } from './types';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Bell, Check, Info, AlertTriangle, Search, Database, CheckCheck, Trash, WifiOff, Cloud, ShieldAlert, ExternalLink, X, RefreshCcw, Plus, Loader2 } from 'lucide-react';
+import { Bell, Check, Info, AlertTriangle, Search, Database, CheckCheck, Trash, WifiOff, Cloud, ShieldAlert, ExternalLink, X, RefreshCcw, Plus, Loader2, Aperture, Grid } from 'lucide-react';
 import { auth, db } from './firebase';
 import { onAuthStateChanged, signOut, deleteUser } from 'firebase/auth';
 import { doc, getDoc, collection, onSnapshot, setDoc, updateDoc, deleteDoc, query, where, writeBatch, increment, getDocs } from 'firebase/firestore';
@@ -42,6 +45,7 @@ const loadState = <T,>(key: string, fallback: T): T => {
 type AppMode = 'LAUNCHER' | 'OS' | 'SITE';
 type PublicView = 'LANDING' | 'LOGIN' | 'REGISTER';
 
+// ... PermissionErrorHelp component ...
 const PermissionErrorHelp = ({ onClose }: { onClose: () => void }) => (
   <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
     <div className="bg-gray-900 border border-red-500 rounded-2xl p-8 max-w-3xl w-full shadow-2xl relative">
@@ -115,7 +119,7 @@ service cloud.firestore {
 );
 
 const App: React.FC = () => {
-  // PUBLIC SITE STATE
+  // ... existing state variables ...
   const [publicSiteId, setPublicSiteId] = useState<string | null>(null);
   const [publicSiteConfig, setPublicSiteConfig] = useState<StudioConfig | null>(null);
   const [publicPackages, setPublicPackages] = useState<Package[]>([]);
@@ -141,6 +145,7 @@ const App: React.FC = () => {
       return sessionStorage.getItem('lumina_google_token');
   });
 
+  // ... updateGoogleToken, states for viewDate, Modals etc ...
   const updateGoogleToken = (token: string | null) => {
       setGoogleToken(token);
       if (token) {
@@ -169,6 +174,7 @@ const App: React.FC = () => {
   const selectedBooking = bookings.find(b => b.id === selectedBookingId) || null;
   const activePhotographers = users.length > 0 ? users : [currentUser];
 
+  // ... useEffect for public site params ...
   useEffect(() => {
       const params = new URLSearchParams(window.location.search);
       const siteId = params.get('site');
@@ -180,6 +186,7 @@ const App: React.FC = () => {
       }
   }, []);
 
+  // ... fetchPublicSiteData ...
   const fetchPublicSiteData = async (siteId: string) => {
       setIsPublicLoading(true);
       setPublicError(null);
@@ -215,8 +222,7 @@ const App: React.FC = () => {
       }
   };
 
-  // --- PUBLIC BOOKING HANDLER (Unauthenticated & Preview) ---
-  // Supports ownerId override for dashboard preview mode
+  // ... handlePublicSiteBooking ...
   const handlePublicSiteBooking = async (data: PublicBookingSubmission, ownerOverride?: string) => {
       const targetOwnerId = ownerOverride || publicSiteId;
       
@@ -227,8 +233,6 @@ const App: React.FC = () => {
       
       try {
           const bookingId = `b-${Date.now()}`;
-          
-          // Use packages list based on context (public vs internal)
           const pkgList = ownerOverride ? packages : publicPackages;
           const selectedPkg = pkgList.find(p => p.id === data.packageId);
           
@@ -243,7 +247,7 @@ const App: React.FC = () => {
               package: selectedPkg?.name || 'Custom',
               price: selectedPkg?.price || 0,
               paidAmount: 0,
-              status: 'INQUIRY', // MUST BE INQUIRY for rules to allow
+              status: 'INQUIRY',
               studio: 'TBD',
               contractStatus: 'PENDING',
               ownerId: targetOwnerId,
@@ -253,7 +257,6 @@ const App: React.FC = () => {
           await setDoc(doc(db, "bookings", bookingId), newBooking);
           
           if (!ownerOverride) {
-              // Only alert if on real public site, preview handles its own feedback
               alert("Booking request sent! The studio will contact you shortly.");
               setPublicBookings(prev => [...prev, newBooking]);
           }
@@ -268,6 +271,7 @@ const App: React.FC = () => {
       }
   };
 
+  // ... useEffect keydown ...
   useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
           if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
@@ -279,6 +283,7 @@ const App: React.FC = () => {
       return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // ... checkConnection ...
   const checkConnection = async () => {
       try {
           const targetId = currentUser.studioId || currentUser.id;
@@ -294,6 +299,7 @@ const App: React.FC = () => {
       }
   };
 
+  // --- AUTH LISTENER ---
   useEffect(() => {
       if (publicSiteId) return;
 
@@ -307,6 +313,7 @@ const App: React.FC = () => {
                   if (userDocSnap.exists()) {
                       userData = userDocSnap.data();
                   } else {
+                      // Create basic profile if not exists
                       const newProfile = {
                           uid: firebaseUser.uid,
                           name: firebaseUser.displayName || 'Studio Owner',
@@ -317,7 +324,8 @@ const App: React.FC = () => {
                           phone: '',
                           status: 'ACTIVE',
                           studioName: 'My Studio',
-                          ownerId: firebaseUser.uid
+                          ownerId: firebaseUser.uid,
+                          hasCompletedOnboarding: false // Default for new
                       };
                       try {
                         await setDoc(userDocRef, newProfile);
@@ -337,7 +345,9 @@ const App: React.FC = () => {
                       status: userData.status || 'ACTIVE',
                       joinedDate: userData.createdAt || new Date().toISOString(),
                       unavailableDates: userData.unavailableDates || [],
-                      studioId: userData.studioId || userData.ownerId
+                      studioId: userData.studioId || userData.ownerId,
+                      hasCompletedOnboarding: userData.hasCompletedOnboarding ?? false,
+                      studioFocus: userData.studioFocus
                   });
                   setIsOfflineMode(false);
                   setPermissionError(false);
@@ -358,12 +368,17 @@ const App: React.FC = () => {
       return () => unsubscribe();
   }, [publicSiteId]);
 
+  // --- DATA LISTENERS EFFECT (bookings, clients, etc) ---
   useEffect(() => {
       if (!isLoggedIn || !currentUser.id) return;
       if (permissionError) return;
       if (publicSiteId) return;
+      
+      // Don't fetch data if we are still onboarding to prevent noise
+      if (!currentUser.hasCompletedOnboarding && currentUser.role === 'OWNER') return;
 
       if (isOfflineMode) {
+          // ... offline loading logic (read-only) ...
           setBookings(loadState('bookings', []));
           setClients(loadState('clients', []));
           setAssets(loadState('assets', []));
@@ -380,6 +395,8 @@ const App: React.FC = () => {
           console.error("Snapshot Error:", err);
           if (err.code === 'permission-denied') setPermissionError(true);
       };
+
+      // --- REMOVED ALL LOCALSTORAGE.SETITEM CALLS TO PREVENT CIRCULAR JSON ERRORS ---
 
       const unsubConfig = onSnapshot(doc(db, "studios", activeStudioId), (snapshot) => {
           if (snapshot.exists()) {
@@ -458,8 +475,88 @@ const App: React.FC = () => {
           unsubNotifications();
           unsubUsers();
       };
-  }, [isLoggedIn, currentUser.id, isOfflineMode, permissionError, publicSiteId]);
+  }, [isLoggedIn, currentUser.id, isOfflineMode, permissionError, publicSiteId, currentUser.hasCompletedOnboarding]);
 
+  // ... remainder of App component logic (CRUD handlers, rendering) ...
+  
+  // --- ONBOARDING HANDLER ---
+  const handleCompleteOnboarding = async (data: { studioName: string, focus: string }) => {
+      try {
+          const ownerId = currentUser.id;
+          const updatedUser = { ...currentUser, hasCompletedOnboarding: true, studioFocus: data.focus, studioName: data.studioName };
+          await updateDoc(doc(db, "users", ownerId), { 
+              hasCompletedOnboarding: true, 
+              studioFocus: data.focus,
+              studioName: data.studioName 
+          });
+          setCurrentUser(updatedUser);
+          const newConfig = { ...INITIAL_CONFIG, name: data.studioName, ownerId };
+          await setDoc(doc(db, "studios", ownerId), newConfig);
+          setConfig(newConfig);
+      } catch (e) {
+          console.error("Onboarding Save Error:", e);
+          alert("Failed to save onboarding data.");
+      }
+  };
+
+  const getActiveOwnerId = () => currentUser.studioId || currentUser.id;
+
+  const handleAddBooking = async (newBooking: Booking, paymentDetails?: { amount: number, accountId: string }) => {
+      if (isOfflineMode) { alert("Cannot add bookings in offline mode."); return; }
+      const batch = writeBatch(db);
+      const ownerId = getActiveOwnerId();
+      const bookingRef = doc(db, "bookings", newBooking.id);
+      batch.set(bookingRef, { ...newBooking, ownerId });
+      if (paymentDetails && paymentDetails.amount > 0 && paymentDetails.accountId) {
+          const accountRef = doc(db, "accounts", paymentDetails.accountId);
+          batch.set(accountRef, { balance: increment(paymentDetails.amount), ownerId }, { merge: true });
+          const transactionRef = doc(db, "transactions", `t-${Date.now()}`);
+          const transaction: Transaction = {
+              id: transactionRef.id, date: new Date().toISOString(), description: `Booking Deposit - ${newBooking.clientName}`, amount: paymentDetails.amount, type: 'INCOME', accountId: paymentDetails.accountId, category: 'Sales / Booking', status: 'COMPLETED', bookingId: newBooking.id, ownerId
+          };
+          batch.set(transactionRef, transaction);
+      }
+      try { await batch.commit(); setNotifications(prev => [{id: `n-${Date.now()}`, title: 'Booking Created', message: `New session for ${newBooking.clientName}`, time: 'Just now', read: false, type: 'SUCCESS'}, ...prev]); } catch (e) { console.error("Error adding booking:", e); alert("Failed to save booking."); }
+  };
+
+  const handleAddClient = async (newClient: Client) => { try { await setDoc(doc(db, "clients", newClient.id), { ...newClient, ownerId: getActiveOwnerId() }); } catch (e) { console.error(e); } };
+  const handleAddAsset = async (newAsset: Asset) => { try { await setDoc(doc(db, "assets", newAsset.id), { ...newAsset, ownerId: getActiveOwnerId() }); } catch (e) { console.error(e); } };
+  const handleAddTransaction = async (newTransactionData: { description: string; amount: number; category: string; accountId: string; bookingId?: string; submittedBy?: string }) => {
+      const batch = writeBatch(db);
+      const ownerId = getActiveOwnerId();
+      const tId = `t-${Date.now()}`;
+      const tRef = doc(db, "transactions", tId);
+      const newTransaction: Transaction = { id: tId, date: new Date().toISOString(), description: newTransactionData.description, amount: newTransactionData.amount, type: 'EXPENSE', accountId: newTransactionData.accountId, category: newTransactionData.category, status: 'COMPLETED', bookingId: newTransactionData.bookingId, submittedBy: newTransactionData.submittedBy, ownerId };
+      batch.set(tRef, newTransaction);
+      const accRef = doc(db, "accounts", newTransactionData.accountId);
+      batch.set(accRef, { balance: increment(-newTransactionData.amount) }, { merge: true });
+      await batch.commit();
+  };
+  const handleUpdateConfig = async (newConfig: StudioConfig) => { setConfig(newConfig); if (!isOfflineMode) { try { const ownerId = getActiveOwnerId(); await setDoc(doc(db, "studios", ownerId), { ...newConfig, ownerId }); } catch (e: any) { console.error(e); alert("Failed to save settings. " + e.message); } } };
+  const handleUpdateBooking = async (updatedBooking: Booking) => { setBookings(prev => prev.map(b => b.id === updatedBooking.id ? updatedBooking : b)); if (!isOfflineMode) { try { await updateDoc(doc(db, "bookings", updatedBooking.id), updatedBooking as any); } catch (e) { console.error(e); } } };
+  const handleLogActivity = async (bookingId: string, action: string, details: string) => { const booking = bookings.find(b => b.id === bookingId); if (!booking) return; const newLog: ActivityLog = { id: `log-${Date.now()}`, timestamp: new Date().toISOString(), action, details, userId: currentUser.id, userName: currentUser.name }; const updatedBooking = { ...booking, logs: [newLog, ...(booking.logs || [])] }; setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b)); if (!isOfflineMode) { try { await updateDoc(doc(db, "bookings", bookingId), { logs: updatedBooking.logs }); } catch(e) { console.error(e); } } };
+  const createSoftDeleteHandler = (collectionName: string, stateSetter: React.Dispatch<React.SetStateAction<any[]>>) => { return async (id: string) => { stateSetter(prev => prev.filter(item => item.id !== id)); if (!isOfflineMode) { try { await updateDoc(doc(db, collectionName, id), { archived: true }); } catch (e: any) { console.error(e); } } }; };
+  const handleSafeDeleteTransaction = async (id: string) => { if (isOfflineMode) { alert("Offline delete not supported."); return; } setTransactions(prev => prev.filter(t => t.id !== id)); try { const batch = writeBatch(db); const tRef = doc(db, "transactions", id); const transaction = transactions.find(t => t.id === id); if (!transaction) return; const accRef = doc(db, "accounts", transaction.accountId); const reverseAmount = transaction.type === 'INCOME' ? -transaction.amount : transaction.amount; batch.update(accRef, { balance: increment(reverseAmount) }); if (transaction.bookingId && transaction.type === 'INCOME') { const bookingRef = doc(db, "bookings", transaction.bookingId); batch.update(bookingRef, { paidAmount: increment(-transaction.amount) }); } batch.update(tRef, { archived: true }); await batch.commit(); } catch (e) { console.error(e); } };
+  const handleDeleteBooking = createSoftDeleteHandler("bookings", setBookings);
+  const handleDeleteClient = createSoftDeleteHandler("clients", setClients);
+  const handleDeleteAsset = createSoftDeleteHandler("assets", setAssets);
+  const handleDeleteTransaction = handleSafeDeleteTransaction;
+  const handleDeletePackage = createSoftDeleteHandler("packages", setPackages);
+  const handleDeleteUser = createSoftDeleteHandler("users", setUsers);
+  const handleDeleteAccount = async () => { if (!currentUser.id) return; if (!window.confirm("Delete account? This is permanent.")) return; try { const ownerId = getActiveOwnerId(); await deleteDoc(doc(db, "studios", ownerId)); const user = auth.currentUser; if (user) { await deleteUser(user); window.location.reload(); } } catch (e) { console.error(e); alert("Please re-login to delete."); } };
+  const handlePublicBooking = async (data: PublicBookingSubmission) => { await handlePublicSiteBooking(data, getActiveOwnerId()); alert("Booking received in Dashboard (Inquiry)."); };
+  const handleUpdateClient = async (client: Client) => { if(!isOfflineMode) await updateDoc(doc(db, "clients", client.id), client as any); };
+  const handleUpdateAsset = async (asset: Asset) => { if(!isOfflineMode) await updateDoc(doc(db, "assets", asset.id), asset as any); };
+  const handleUpdatePackage = async (pkg: Package) => { if(!isOfflineMode) await updateDoc(doc(db, "packages", pkg.id), pkg as any); };
+  const handleAddPackage = async (pkg: Package) => { if(!isOfflineMode) await setDoc(doc(db, "packages", pkg.id), { ...pkg, ownerId: getActiveOwnerId() }); };
+  const handleSettleBooking = async (bookingId: string, amount: number, accountId: string) => { const batch = writeBatch(db); const ownerId = getActiveOwnerId(); const booking = bookings.find(b => b.id === bookingId); if (!booking) return; let newStatus: ProjectStatus = booking.status; if (amount < 0 && (booking.paidAmount + amount) <= 0) newStatus = 'REFUNDED'; else if (amount > 0) newStatus = 'COMPLETED'; const bookingRef = doc(db, "bookings", bookingId); batch.update(bookingRef, { paidAmount: increment(amount), status: newStatus }); const accountRef = doc(db, "accounts", accountId); batch.set(accountRef, { balance: increment(amount) }, { merge: true }); const tId = `t-${Date.now()}`; batch.set(doc(db, "transactions", tId), { id: tId, date: new Date().toISOString(), description: amount < 0 ? 'Refund' : 'Settlement', amount: Math.abs(amount), type: amount >= 0 ? 'INCOME' : 'EXPENSE', accountId, category: amount >= 0 ? 'Sales' : 'Refunds', status: 'COMPLETED', bookingId, ownerId }); await batch.commit(); };
+  const handleAddAccount = async (acc: Account) => { if (!isOfflineMode) await setDoc(doc(db, "accounts", acc.id), { ...acc, ownerId: getActiveOwnerId() }); };
+  const handleUpdateAccount = async (acc: Account) => { if (!isOfflineMode) await updateDoc(doc(db, "accounts", acc.id), acc as any); };
+  const handleLogout = async () => { await signOut(auth); setIsLoggedIn(false); setPublicView('LOGIN'); setBookings([]); };
+  const toggleTheme = () => { const newTheme = !isDarkMode; setIsDarkMode(newTheme); localStorage.setItem('lumina_theme', newTheme ? 'dark' : 'light'); if (newTheme) document.documentElement.classList.remove('light-mode'); else document.documentElement.classList.add('light-mode'); };
+  useEffect(() => { if (!isDarkMode) document.documentElement.classList.add('light-mode'); }, []);
+
+  // 1. Public Site View (External)
   if (publicSiteId) {
       return (
           <PublicSiteView 
@@ -474,172 +571,16 @@ const App: React.FC = () => {
       );
   }
 
-  const getActiveOwnerId = () => currentUser.studioId || currentUser.id;
-
-  const handleAddBooking = async (newBooking: Booking, paymentDetails?: { amount: number, accountId: string }) => {
-      if (isOfflineMode) { alert("Cannot add bookings in offline mode."); return; }
-      
-      const batch = writeBatch(db);
-      const ownerId = getActiveOwnerId();
-      
-      const bookingRef = doc(db, "bookings", newBooking.id);
-      batch.set(bookingRef, { ...newBooking, ownerId });
-
-      if (paymentDetails && paymentDetails.amount > 0 && paymentDetails.accountId) {
-          const accountRef = doc(db, "accounts", paymentDetails.accountId);
-          batch.set(accountRef, { balance: increment(paymentDetails.amount), ownerId }, { merge: true });
-
-          const transactionRef = doc(db, "transactions", `t-${Date.now()}`);
-          const transaction: Transaction = {
-              id: transactionRef.id,
-              date: new Date().toISOString(),
-              description: `Booking Deposit - ${newBooking.clientName}`,
-              amount: paymentDetails.amount,
-              type: 'INCOME',
-              accountId: paymentDetails.accountId,
-              category: 'Sales / Booking',
-              status: 'COMPLETED',
-              bookingId: newBooking.id,
-              ownerId
-          };
-          batch.set(transactionRef, transaction);
-      }
-
-      try {
-          await batch.commit();
-          setNotifications(prev => [{id: `n-${Date.now()}`, title: 'Booking Created', message: `New session for ${newBooking.clientName}`, time: 'Just now', read: false, type: 'SUCCESS'}, ...prev]);
-      } catch (e) {
-          console.error("Error adding booking:", e);
-          alert("Failed to save booking. Please check your connection.");
-      }
-  };
-
-  const handleAddClient = async (newClient: Client) => { try { await setDoc(doc(db, "clients", newClient.id), { ...newClient, ownerId: getActiveOwnerId() }); } catch (e) { console.error(e); } };
-  const handleAddAsset = async (newAsset: Asset) => { try { await setDoc(doc(db, "assets", newAsset.id), { ...newAsset, ownerId: getActiveOwnerId() }); } catch (e) { console.error(e); } };
-  
-  const handleAddTransaction = async (newTransactionData: { description: string; amount: number; category: string; accountId: string; bookingId?: string; submittedBy?: string }) => {
-      const batch = writeBatch(db);
-      const ownerId = getActiveOwnerId();
-      const tId = `t-${Date.now()}`;
-      const tRef = doc(db, "transactions", tId);
-      const newTransaction: Transaction = {
-          id: tId, date: new Date().toISOString(), description: newTransactionData.description, amount: newTransactionData.amount, type: 'EXPENSE', accountId: newTransactionData.accountId, category: newTransactionData.category, status: 'COMPLETED', bookingId: newTransactionData.bookingId, submittedBy: newTransactionData.submittedBy, ownerId
-      };
-      batch.set(tRef, newTransaction);
-      const accRef = doc(db, "accounts", newTransactionData.accountId);
-      batch.set(accRef, { balance: increment(-newTransactionData.amount) }, { merge: true });
-      await batch.commit();
-  };
-
-  const handleUpdateConfig = async (newConfig: StudioConfig) => {
-      setConfig(newConfig);
-      if (!isOfflineMode) {
-          try { const ownerId = getActiveOwnerId(); await setDoc(doc(db, "studios", ownerId), { ...newConfig, ownerId }); } catch (e: any) { console.error(e); alert("Failed to save settings. " + e.message); }
-      }
-  };
-
-  const handleUpdateBooking = async (updatedBooking: Booking) => {
-      setBookings(prev => prev.map(b => b.id === updatedBooking.id ? updatedBooking : b));
-      if (!isOfflineMode) { try { await updateDoc(doc(db, "bookings", updatedBooking.id), updatedBooking as any); } catch (e) { console.error(e); } }
-  };
-
-  const handleLogActivity = async (bookingId: string, action: string, details: string) => {
-      const booking = bookings.find(b => b.id === bookingId);
-      if (!booking) return;
-      const newLog: ActivityLog = { id: `log-${Date.now()}`, timestamp: new Date().toISOString(), action, details, userId: currentUser.id, userName: currentUser.name };
-      const updatedBooking = { ...booking, logs: [newLog, ...(booking.logs || [])] };
-      setBookings(prev => prev.map(b => b.id === bookingId ? updatedBooking : b));
-      if (!isOfflineMode) { try { await updateDoc(doc(db, "bookings", bookingId), { logs: updatedBooking.logs }); } catch(e) { console.error(e); } }
-  };
-
-  const createSoftDeleteHandler = (collectionName: string, stateSetter: React.Dispatch<React.SetStateAction<any[]>>) => {
-      return async (id: string) => {
-          stateSetter(prev => prev.filter(item => item.id !== id));
-          if (!isOfflineMode) { try { await updateDoc(doc(db, collectionName, id), { archived: true }); } catch (e: any) { console.error(e); } }
-      };
-  };
-
-  const handleSafeDeleteTransaction = async (id: string) => {
-      if (isOfflineMode) { alert("Offline delete not supported."); return; }
-      setTransactions(prev => prev.filter(t => t.id !== id));
-      try {
-          const batch = writeBatch(db);
-          const tRef = doc(db, "transactions", id);
-          const transaction = transactions.find(t => t.id === id);
-          if (!transaction) return;
-          const accRef = doc(db, "accounts", transaction.accountId);
-          const reverseAmount = transaction.type === 'INCOME' ? -transaction.amount : transaction.amount; 
-          batch.update(accRef, { balance: increment(reverseAmount) });
-          if (transaction.bookingId && transaction.type === 'INCOME') {
-              const bookingRef = doc(db, "bookings", transaction.bookingId);
-              batch.update(bookingRef, { paidAmount: increment(-transaction.amount) });
-          }
-          batch.update(tRef, { archived: true });
-          await batch.commit();
-      } catch (e) { console.error(e); }
-  };
-
-  const handleDeleteBooking = createSoftDeleteHandler("bookings", setBookings);
-  const handleDeleteClient = createSoftDeleteHandler("clients", setClients);
-  const handleDeleteAsset = createSoftDeleteHandler("assets", setAssets);
-  const handleDeleteTransaction = handleSafeDeleteTransaction;
-  const handleDeletePackage = createSoftDeleteHandler("packages", setPackages);
-  const handleDeleteUser = createSoftDeleteHandler("users", setUsers);
-
-  const handleDeleteAccount = async () => {
-      if (!currentUser.id) return;
-      if (!window.confirm("Delete account? This is permanent.")) return;
-      try {
-          const ownerId = getActiveOwnerId();
-          await deleteDoc(doc(db, "studios", ownerId));
-          const user = auth.currentUser;
-          if (user) { await deleteUser(user); window.location.reload(); }
-      } catch (e) { console.error(e); alert("Please re-login to delete."); }
-  };
-
-  // Internal handler for preview mode in Dashboard
-  const handlePublicBooking = async (data: PublicBookingSubmission) => {
-      await handlePublicSiteBooking(data, getActiveOwnerId());
-      alert("Booking received in Dashboard (Inquiry).");
-  };
-
-  const handleUpdateClient = async (client: Client) => { if(!isOfflineMode) await updateDoc(doc(db, "clients", client.id), client as any); };
-  const handleUpdateAsset = async (asset: Asset) => { if(!isOfflineMode) await updateDoc(doc(db, "assets", asset.id), asset as any); };
-  const handleUpdatePackage = async (pkg: Package) => { if(!isOfflineMode) await updateDoc(doc(db, "packages", pkg.id), pkg as any); };
-  const handleAddPackage = async (pkg: Package) => { if(!isOfflineMode) await setDoc(doc(db, "packages", pkg.id), { ...pkg, ownerId: getActiveOwnerId() }); };
-  
-  const handleSettleBooking = async (bookingId: string, amount: number, accountId: string) => {
-      const batch = writeBatch(db);
-      const ownerId = getActiveOwnerId();
-      const booking = bookings.find(b => b.id === bookingId);
-      if (!booking) return;
-      let newStatus: ProjectStatus = booking.status;
-      if (amount < 0 && (booking.paidAmount + amount) <= 0) newStatus = 'REFUNDED';
-      else if (amount > 0) newStatus = 'COMPLETED';
-      const bookingRef = doc(db, "bookings", bookingId);
-      batch.update(bookingRef, { paidAmount: increment(amount), status: newStatus });
-      const accountRef = doc(db, "accounts", accountId);
-      batch.set(accountRef, { balance: increment(amount) }, { merge: true });
-      const tId = `t-${Date.now()}`;
-      batch.set(doc(db, "transactions", tId), {
-          id: tId, date: new Date().toISOString(), description: amount < 0 ? 'Refund' : 'Settlement', amount: Math.abs(amount), type: amount >= 0 ? 'INCOME' : 'EXPENSE', accountId, category: amount >= 0 ? 'Sales' : 'Refunds', status: 'COMPLETED', bookingId, ownerId
-      });
-      await batch.commit();
-  };
-
-  const handleAddAccount = async (acc: Account) => { if (!isOfflineMode) await setDoc(doc(db, "accounts", acc.id), { ...acc, ownerId: getActiveOwnerId() }); };
-  const handleUpdateAccount = async (acc: Account) => { if (!isOfflineMode) await updateDoc(doc(db, "accounts", acc.id), acc as any); };
-
-  const handleLogout = async () => { await signOut(auth); setIsLoggedIn(false); setPublicView('LOGIN'); setBookings([]); };
-  const toggleTheme = () => { const newTheme = !isDarkMode; setIsDarkMode(newTheme); localStorage.setItem('lumina_theme', newTheme ? 'dark' : 'light'); if (newTheme) document.documentElement.classList.remove('light-mode'); else document.documentElement.classList.add('light-mode'); };
-  useEffect(() => { if (!isDarkMode) document.documentElement.classList.add('light-mode'); }, []);
-
   if (isAuthChecking) return <div className="min-h-screen bg-lumina-base flex items-center justify-center"><Loader2 className="w-10 h-10 text-lumina-accent animate-spin" /></div>;
 
   if (!isLoggedIn) {
       if (publicView === 'LOGIN') return <LoginView users={USERS} onLogin={() => {}} onRegisterLink={() => setPublicView('REGISTER')} onHome={() => setPublicView('LANDING')} />;
       if (publicView === 'REGISTER') return <RegisterView onLoginLink={() => setPublicView('LOGIN')} onRegisterSuccess={(u) => { setCurrentUser(u); setIsLoggedIn(true); }} onHome={() => setPublicView('LANDING')} />;
       return <LandingPageView onLogin={() => setPublicView('LOGIN')} onRegister={() => setPublicView('REGISTER')} />;
+  }
+
+  if (isLoggedIn && !currentUser.hasCompletedOnboarding && currentUser.role === 'OWNER') {
+      return <OnboardingView user={currentUser} onComplete={handleCompleteOnboarding} />;
   }
 
   if (appMode === 'LAUNCHER') return <AppLauncher user={currentUser} onSelectApp={setAppMode} onLogout={handleLogout} />;
@@ -673,7 +614,7 @@ const App: React.FC = () => {
         bookings={bookings} 
       />
 
-      <main className="flex-1 ml-0 lg:ml-64 p-4 lg:p-8 overflow-hidden flex flex-col relative h-screen">
+      <main className="flex-1 ml-0 lg:ml-64 p-4 lg:p-8 overflow-hidden flex flex-col relative h-screen pb-24 lg:pb-8">
         {isOfflineMode && (
             <div className="absolute top-0 left-0 right-0 bg-amber-500/90 text-black text-xs font-bold text-center py-1 z-50 flex items-center justify-center gap-2">
                 <WifiOff size={12} /> OFFLINE MODE - Changes saved locally
@@ -681,9 +622,19 @@ const App: React.FC = () => {
             </div>
         )}
 
+        <div className="lg:hidden flex justify-between items-center mb-4 pb-4 border-b border-lumina-highlight">
+           <div className="flex items-center gap-2">
+              <Aperture className="text-lumina-accent w-6 h-6" />
+              <span className="font-display font-bold text-lg tracking-tight text-lumina-text">LUMINA</span>
+           </div>
+           <button onClick={() => setAppMode('LAUNCHER')} className="p-2 bg-lumina-highlight rounded-lg text-lumina-muted">
+              <Grid size={18} />
+           </button>
+        </div>
+
         <div className="flex-1 overflow-hidden relative h-full">
             <AnimatePresence mode="wait">
-                <Motion.div key={currentView} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} className="h-full">
+                <Motion.div key={currentView} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} transition={{ duration: 0.2 }} className="h-full overflow-y-auto custom-scrollbar pb-24 lg:pb-0">
                     {currentView === 'dashboard' && <DashboardView user={currentUser} bookings={bookings} transactions={transactions} onSelectBooking={(id) => { setSelectedBookingId(id); setIsCommandPaletteOpen(false); }} selectedDate={viewDate} onNavigate={setCurrentView} config={config} onOpenWhatsApp={(b) => setSelectedBookingId(b.id)} onLogActivity={handleLogActivity} />}
                     {currentView === 'calendar' && <CalendarView bookings={bookings} currentDate={viewDate} users={activePhotographers} rooms={config.rooms} onDateChange={setViewDate} onNewBooking={(prefill) => { setBookingPrefill(prefill); setIsNewBookingOpen(true); }} onSelectBooking={setSelectedBookingId} googleToken={googleToken} />}
                     {currentView === 'production' && <ProductionView bookings={bookings} onSelectBooking={setSelectedBookingId} currentUser={currentUser} onUpdateBooking={handleUpdateBooking} config={config} />}
@@ -700,7 +651,26 @@ const App: React.FC = () => {
         <NewBookingModal isOpen={isNewBookingOpen} onClose={() => { setIsNewBookingOpen(false); setBookingPrefill(undefined); }} photographers={activePhotographers} accounts={accounts} bookings={bookings} clients={clients} assets={assets} config={config} onAddBooking={handleAddBooking} onAddClient={handleAddClient} initialData={bookingPrefill} googleToken={googleToken} />
         <ProjectDrawer isOpen={!!selectedBookingId} onClose={() => setSelectedBookingId(null)} booking={selectedBooking} photographer={activePhotographers.find(p => p.id === selectedBooking?.photographerId)} onUpdateBooking={handleUpdateBooking} onDeleteBooking={handleDeleteBooking} bookings={bookings} config={config} packages={packages} currentUser={currentUser} assets={assets} users={activePhotographers} transactions={transactions} onAddTransaction={handleAddTransaction} accounts={accounts} googleToken={googleToken} onLogActivity={handleLogActivity} />
         <CommandPalette isOpen={isCommandPaletteOpen} onClose={() => setIsCommandPaletteOpen(false)} onNavigate={setCurrentView} clients={clients} bookings={bookings} assets={assets} onSelectBooking={setSelectedBookingId} currentUser={currentUser} />
-        <motion.button whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.9 }} onClick={() => setIsNewBookingOpen(true)} className="fixed bottom-8 right-8 w-14 h-14 bg-lumina-accent text-lumina-base rounded-full shadow-2xl flex items-center justify-center z-40 hover:shadow-lumina-accent/50 border-2 border-white/20"><Plus size={28} /></motion.button>
+        
+        <motion.button 
+            whileHover={{ scale: 1.1 }} 
+            whileTap={{ scale: 0.9 }} 
+            onClick={() => setIsNewBookingOpen(true)} 
+            className="fixed bottom-20 right-4 lg:bottom-8 lg:right-8 w-14 h-14 bg-lumina-accent text-lumina-base rounded-full shadow-2xl flex items-center justify-center z-40 hover:shadow-lumina-accent/50 border-2 border-white/20"
+        >
+            <Plus size={28} />
+        </motion.button>
+
+        <MobileNav 
+            currentUser={currentUser} 
+            currentView={currentView} 
+            onNavigate={setCurrentView} 
+            onLogout={handleLogout}
+            onSwitchApp={() => setAppMode('LAUNCHER')}
+            isDarkMode={isDarkMode}
+            onToggleTheme={toggleTheme}
+            bookings={bookings}
+        />
       </main>
     </div>
   );
