@@ -99,7 +99,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
-  // ... (checkRescheduleConflict omitted for brevity, unchanged)
   const checkRescheduleConflict = () => {
       if (!bookings) return null;
       
@@ -152,7 +151,6 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       return null;
   };
 
-  // ... (other helper functions omitted for brevity, unchanged)
   const getUnavailableAssets = useMemo(() => {
       if (!booking || !bookings) return new Map<string, string>(); 
 
@@ -489,7 +487,18 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
               body: JSON.stringify(folderMetadata),
           });
 
-          if (!response.ok) throw new Error("Drive API Error");
+          if (!response.ok) {
+              const errorData = await response.json();
+              console.error("Google Drive API Error:", errorData);
+              
+              if (response.status === 401) {
+                  throw new Error("Session expired. Please Disconnect & Reconnect Google in Settings.");
+              }
+              if (response.status === 403) {
+                  throw new Error("Permission denied. Please ensure 'Google Drive API' is enabled in your Google Cloud Console.");
+              }
+              throw new Error(errorData.error?.message || "Unknown Drive API Error");
+          }
 
           const data = await response.json();
           
@@ -498,6 +507,9 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
               const fileRes = await fetch(`https://www.googleapis.com/drive/v3/files/${data.id}?fields=webViewLink`, {
                   headers: { 'Authorization': `Bearer ${googleToken}` }
               });
+              
+              if (!fileRes.ok) throw new Error("Created folder but failed to get link.");
+              
               const fileData = await fileRes.json();
               
               const log = createLocalLog('DRIVE_CREATED', `Created Google Drive folder: ${data.id}`);
@@ -508,11 +520,11 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
               });
               alert("Folder created successfully! Link added to Delivery URL.");
           } else {
-              throw new Error("Failed to create folder");
+              throw new Error("Failed to create folder - no ID returned.");
           }
-      } catch (e) {
+      } catch (e: any) {
           console.error(e);
-          alert("Failed to create Drive folder. Please ensure your Google session is valid in Settings.");
+          alert(`Google Drive Error: ${e.message}`);
       } finally {
           setIsUploading(false);
       }

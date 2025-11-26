@@ -417,6 +417,7 @@ export interface CalendarViewProps {
   onDateChange: (date: string) => void;
   onNewBooking: (prefill?: { date: string, time: string, studio: string }) => void;
   onSelectBooking: (id: string) => void;
+  googleToken?: string | null;
 }
 
 export interface ClientsViewProps {

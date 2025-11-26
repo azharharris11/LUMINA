@@ -11,11 +11,12 @@ interface CalendarViewProps {
   onDateChange: (date: string) => void;
   onNewBooking: (prefill?: { date: string, time: string, studio: string }) => void;
   onSelectBooking: (id: string) => void;
+  googleToken?: string | null;
 }
 
 type ViewMode = 'DAY' | 'WEEK' | 'MONTH';
 
-const CalendarView: React.FC<CalendarViewProps> = ({ bookings, currentDate, users, rooms, onDateChange, onNewBooking, onSelectBooking }) => {
+const CalendarView: React.FC<CalendarViewProps> = ({ bookings, currentDate, users, rooms, onDateChange, onNewBooking, onSelectBooking, googleToken }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('DAY');
   const [currentTimeOffset, setCurrentTimeOffset] = useState<number | null>(null);
 
