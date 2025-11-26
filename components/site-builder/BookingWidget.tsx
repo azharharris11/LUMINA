@@ -29,10 +29,28 @@ const BookingWidget: React.FC<BookingWidgetProps> = ({ packages, theme, onSubmit
 
     // --- TRACKING HELPER ---
     const firePixel = (event: string, details: string) => {
-        if (!pixels) return;
-        const hasPixel = pixels.facebookPixelId || pixels.tiktokPixelId || pixels.googleTagId;
+        const w = window as any;
+        let fired = false;
+
+        // Facebook Pixel
+        if (pixels?.facebookPixelId && w.fbq) {
+            w.fbq('track', event, { content_name: details });
+            fired = true;
+        }
         
-        if (hasPixel) {
+        // TikTok Pixel
+        if (pixels?.tiktokPixelId && w.ttq) {
+            w.ttq.track(event, { content_name: details });
+            fired = true;
+        }
+
+        // Google Tag
+        if (pixels?.googleTagId && w.gtag) {
+             w.gtag('event', event, { event_label: details });
+             fired = true;
+        }
+
+        if (fired) {
             console.log(`[TRACKING] Event: ${event} | Details: ${details}`);
             setPixelToast(`${event} fired`);
             setTimeout(() => setPixelToast(null), 3000);
@@ -60,6 +78,9 @@ const BookingWidget: React.FC<BookingWidgetProps> = ({ packages, theme, onSubmit
             const hasConflict = bookings.some(b => {
                 if (b.date !== selectedDate || b.status === 'CANCELLED') return false;
                 
+                // Defensive check for timeStart existence
+                if (!b.timeStart) return false;
+
                 const [bStartH, bStartM] = b.timeStart.split(':').map(Number);
                 const bStart = bStartH * 60 + bStartM;
                 const bEnd = bStart + (b.duration * 60);
@@ -153,7 +174,7 @@ const BookingWidget: React.FC<BookingWidgetProps> = ({ packages, theme, onSubmit
 
     const s = getThemeClasses();
 
-    const handleNext = () => {
+    const handleNext = async () => {
         if (step === 'PACKAGE' && selectedPackage) {
             setStep('DATE');
         }
@@ -168,14 +189,19 @@ const BookingWidget: React.FC<BookingWidgetProps> = ({ packages, theme, onSubmit
             setStep('CONFIRM');
         }
         else if (step === 'CONFIRM') {
-            setIsSubmitting(true);
-            
-            // SIMULATE NETWORK REQUEST
-            setTimeout(() => {
-                setIsSubmitting(false);
+            if (onSubmit && selectedPackage) {
+                setIsSubmitting(true);
                 
-                if (onSubmit && selectedPackage) {
-                    onSubmit({
+                // TRACK: Purchase / Schedule
+                firePixel('Purchase', `Package: ${selectedPackage.name}`);
+                firePixel('Schedule', `Date: ${selectedDate} ${selectedTime}`);
+
+                try {
+                    // Execute real submit (Async)
+                    // The parent component (App.tsx) handles the database write.
+                    // We await it if possible, or just fire and forget if it's void.
+                    // Since the prop is void, we assume it returns a Promise if it's async.
+                    await (onSubmit as any)({
                         clientName: clientInfo.name,
                         clientEmail: clientInfo.email,
                         clientPhone: clientInfo.phone,
@@ -183,18 +209,22 @@ const BookingWidget: React.FC<BookingWidgetProps> = ({ packages, theme, onSubmit
                         time: selectedTime,
                         packageId: selectedPackage.id
                     });
-                    alert("Booking request sent successfully! Check your Dashboard.");
-                } else {
-                    alert("Integration not connected. Check SiteBuilder props.");
-                }
 
-                // Reset
-                setStep('PACKAGE');
-                setSelectedPackage(null);
-                setClientInfo({ name: '', email: '', phone: '' });
-                setSelectedDate('');
-                setSelectedTime('');
-            }, 1500);
+                    // Success State
+                    setStep('PACKAGE');
+                    setSelectedPackage(null);
+                    setClientInfo({ name: '', email: '', phone: '' });
+                    setSelectedDate('');
+                    setSelectedTime('');
+                } catch (error) {
+                    console.error("Submission Failed:", error);
+                    alert("Failed to submit booking. Please try again.");
+                } finally {
+                    setIsSubmitting(false);
+                }
+            } else {
+                alert("Integration not connected. Check SiteBuilder props.");
+            }
         }
     };
 
@@ -206,7 +236,7 @@ const BookingWidget: React.FC<BookingWidgetProps> = ({ packages, theme, onSubmit
 
     return (
         <div className={`w-full max-w-md mx-auto my-12 ${s.container} relative`}>
-            {/* Pixel Simulation Toast */}
+            {/* Pixel Toast */}
             <AnimatePresence>
                 {pixelToast && (
                     <Motion.div 

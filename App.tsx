@@ -1,12 +1,4 @@
 
-
-
-
-
-
-
-
-
 import React, { useState, useEffect } from 'react';
 import Sidebar from './components/Sidebar';
 import AppLauncher from './components/AppLauncher';
@@ -23,7 +15,7 @@ import RegisterView from './views/RegisterView';
 import AnalyticsView from './views/AnalyticsView';
 import SiteBuilderView from './views/SiteBuilderView';
 import LandingPageView from './views/LandingPageView';
-import PublicSiteView from './views/PublicSiteView'; // Import Public View
+import PublicSiteView from './views/PublicSiteView'; 
 import NewBookingModal from './components/NewBookingModal';
 import CommandPalette from './components/CommandPalette';
 import ProjectDrawer from './components/ProjectDrawer';
@@ -128,7 +120,7 @@ const App: React.FC = () => {
   const [publicSiteConfig, setPublicSiteConfig] = useState<StudioConfig | null>(null);
   const [publicPackages, setPublicPackages] = useState<Package[]>([]);
   const [publicUsers, setPublicUsers] = useState<User[]>([]);
-  const [publicBookings, setPublicBookings] = useState<Booking[]>([]); // For availability checking
+  const [publicBookings, setPublicBookings] = useState<Booking[]>([]); 
   const [isPublicLoading, setIsPublicLoading] = useState(false);
   const [publicError, setPublicError] = useState<string | null>(null);
 
@@ -145,7 +137,6 @@ const App: React.FC = () => {
       return saved ? saved === 'dark' : true;
   });
 
-  // GOOGLE INTEGRATION STATE - Persisted
   const [googleToken, setGoogleToken] = useState<string | null>(() => {
       return sessionStorage.getItem('lumina_google_token');
   });
@@ -159,16 +150,12 @@ const App: React.FC = () => {
       }
   };
 
-  // Date State for Calendar & Dashboard
   const [viewDate, setViewDate] = useState(new Date().toISOString().split('T')[0]);
-
-  // Modal States
   const [isNewBookingOpen, setIsNewBookingOpen] = useState(false);
   const [selectedBookingId, setSelectedBookingId] = useState<string | null>(null);
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [bookingPrefill, setBookingPrefill] = useState<{date:string, time:string, studio:string} | undefined>(undefined);
 
-  // Data
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
@@ -182,7 +169,6 @@ const App: React.FC = () => {
   const selectedBooking = bookings.find(b => b.id === selectedBookingId) || null;
   const activePhotographers = users.length > 0 ? users : [currentUser];
 
-  // --- INIT: CHECK FOR PUBLIC SITE URL ---
   useEffect(() => {
       const params = new URLSearchParams(window.location.search);
       const siteId = params.get('site');
@@ -190,7 +176,7 @@ const App: React.FC = () => {
       if (siteId) {
           setPublicSiteId(siteId);
           fetchPublicSiteData(siteId);
-          setIsAuthChecking(false); // Skip auth check UI
+          setIsAuthChecking(false);
       }
   }, []);
 
@@ -198,7 +184,6 @@ const App: React.FC = () => {
       setIsPublicLoading(true);
       setPublicError(null);
       try {
-          // 1. Fetch Config
           const configSnap = await getDoc(doc(db, "studios", siteId));
           if (!configSnap.exists()) {
               setPublicError("Studio not found.");
@@ -207,21 +192,16 @@ const App: React.FC = () => {
           }
           setPublicSiteConfig(configSnap.data() as StudioConfig);
 
-          // 2. Fetch Packages
           const pkgQ = query(collection(db, "packages"), where("ownerId", "==", siteId));
           const pkgSnap = await getDocs(pkgQ);
           const pkgs = pkgSnap.docs.map(d => ({ id: d.id, ...d.data() } as Package)).filter(p => !p.archived && p.active);
           setPublicPackages(pkgs);
 
-          // 3. Fetch Team
           const userQ = query(collection(db, "users"), where("ownerId", "==", siteId));
           const userSnap = await getDocs(userQ);
           const team = userSnap.docs.map(d => ({ id: d.id, ...d.data() } as User));
           setPublicUsers(team);
 
-          // 4. Fetch Bookings (for availability check)
-          // Ideally, this should be a separate collection or filtered view for security, 
-          // but for now we fetch and strip sensitive data or just rely on dates.
           const bookQ = query(collection(db, "bookings"), where("ownerId", "==", siteId));
           const bookSnap = await getDocs(bookQ);
           const books = bookSnap.docs.map(d => ({ id: d.id, ...d.data() } as Booking)).filter(b => b.status !== 'CANCELLED');
@@ -235,22 +215,28 @@ const App: React.FC = () => {
       }
   };
 
-  // --- PUBLIC BOOKING HANDLER (Unauthenticated) ---
-  const handlePublicSiteBooking = async (data: PublicBookingSubmission) => {
-      if (!publicSiteId) return;
+  // --- PUBLIC BOOKING HANDLER (Unauthenticated & Preview) ---
+  // Supports ownerId override for dashboard preview mode
+  const handlePublicSiteBooking = async (data: PublicBookingSubmission, ownerOverride?: string) => {
+      const targetOwnerId = ownerOverride || publicSiteId;
+      
+      if (!targetOwnerId) {
+          console.error("Missing owner ID for public booking");
+          return;
+      }
       
       try {
-          // 1. Find Client (We can't query efficiently without auth sometimes, so we blindly create new or relying on rules)
-          // Note: Creating a client might fail if rules are strict. We will just embed client info in booking for 'INQUIRY'.
-          
           const bookingId = `b-${Date.now()}`;
-          const selectedPkg = publicPackages.find(p => p.id === data.packageId);
+          
+          // Use packages list based on context (public vs internal)
+          const pkgList = ownerOverride ? packages : publicPackages;
+          const selectedPkg = pkgList.find(p => p.id === data.packageId);
           
           const newBooking: any = {
               id: bookingId,
               clientName: data.clientName,
               clientPhone: data.clientPhone,
-              clientEmail: data.clientEmail, // Extra field for contact
+              clientEmail: data.clientEmail,
               date: data.date,
               timeStart: data.time,
               duration: selectedPkg?.duration || 1,
@@ -260,15 +246,17 @@ const App: React.FC = () => {
               status: 'INQUIRY', // MUST BE INQUIRY for rules to allow
               studio: 'TBD',
               contractStatus: 'PENDING',
-              ownerId: publicSiteId,
+              ownerId: targetOwnerId,
               createdAt: new Date().toISOString()
           };
 
           await setDoc(doc(db, "bookings", bookingId), newBooking);
-          alert("Booking request sent! The studio will contact you shortly.");
           
-          // Refresh availability locally
-          setPublicBookings(prev => [...prev, newBooking]);
+          if (!ownerOverride) {
+              // Only alert if on real public site, preview handles its own feedback
+              alert("Booking request sent! The studio will contact you shortly.");
+              setPublicBookings(prev => [...prev, newBooking]);
+          }
 
       } catch (e: any) {
           console.error("Public Booking Error:", e);
@@ -280,7 +268,6 @@ const App: React.FC = () => {
       }
   };
 
-  // ... (Key bindings, Check connection, Auth effect remain same) ...
   useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
           if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
@@ -308,7 +295,6 @@ const App: React.FC = () => {
   };
 
   useEffect(() => {
-      // Skip normal auth check if in public site mode
       if (publicSiteId) return;
 
       const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
@@ -375,7 +361,7 @@ const App: React.FC = () => {
   useEffect(() => {
       if (!isLoggedIn || !currentUser.id) return;
       if (permissionError) return;
-      if (publicSiteId) return; // Don't load dashboard data in public mode
+      if (publicSiteId) return;
 
       if (isOfflineMode) {
           setBookings(loadState('bookings', []));
@@ -474,7 +460,6 @@ const App: React.FC = () => {
       };
   }, [isLoggedIn, currentUser.id, isOfflineMode, permissionError, publicSiteId]);
 
-  // --- RENDER PUBLIC SITE ---
   if (publicSiteId) {
       return (
           <PublicSiteView 
@@ -484,12 +469,11 @@ const App: React.FC = () => {
               bookings={publicBookings}
               isLoading={isPublicLoading}
               error={publicError}
-              onBooking={handlePublicSiteBooking}
+              onBooking={(data) => handlePublicSiteBooking(data)} 
           />
       );
   }
 
-  // ... (Rest of handlers remain same) ...
   const getActiveOwnerId = () => currentUser.studioId || currentUser.id;
 
   const handleAddBooking = async (newBooking: Booking, paymentDetails?: { amount: number, accountId: string }) => {
@@ -529,10 +513,6 @@ const App: React.FC = () => {
           alert("Failed to save booking. Please check your connection.");
       }
   };
-
-  // ... (Other handlers: Client, Asset, Transaction, Config, Update, LogActivity, SoftDelete, AccountDeletion, PublicHandler, etc. remain same) ...
-  // I'm omitting the redundant code to save space as it is identical to previous version except for the public handling above.
-  // Just ensuring the handlers are defined for the render.
 
   const handleAddClient = async (newClient: Client) => { try { await setDoc(doc(db, "clients", newClient.id), { ...newClient, ownerId: getActiveOwnerId() }); } catch (e) { console.error(e); } };
   const handleAddAsset = async (newAsset: Asset) => { try { await setDoc(doc(db, "assets", newAsset.id), { ...newAsset, ownerId: getActiveOwnerId() }); } catch (e) { console.error(e); } };
@@ -617,10 +597,9 @@ const App: React.FC = () => {
       } catch (e) { console.error(e); alert("Please re-login to delete."); }
   };
 
-  // Internal handler for preview mode (simulated)
+  // Internal handler for preview mode in Dashboard
   const handlePublicBooking = async (data: PublicBookingSubmission) => {
-      // Reuses the same logic as public handler but alerts for dashboard
-      await handlePublicSiteBooking(data);
+      await handlePublicSiteBooking(data, getActiveOwnerId());
       alert("Booking received in Dashboard (Inquiry).");
   };
 
