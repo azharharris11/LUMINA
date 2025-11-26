@@ -76,40 +76,35 @@ const ClientsView: React.FC<ClientsViewProps> = ({ clients, bookings, onUpdateCl
       e.stopPropagation();
       e.preventDefault();
       
-      // Use setTimeout to decouple from the click event
-      setTimeout(() => {
-          // 1. Confirm First
-          if (!window.confirm(`Are you sure you want to permanently delete client '${selectedClient?.name}'?`)) {
+      // 1. Safety Check
+      if (!selectedClient) return;
+
+      // 2. Confirm First (Sync)
+      if (!window.confirm(`Are you sure you want to permanently delete client '${selectedClient.name}'?`)) {
+          return;
+      }
+
+      try {
+          // 3. Integrity Check
+          const validBookings = bookings || [];
+          const associatedBookings = validBookings.filter(b => b && b.clientId === selectedClient.id);
+          
+          if (associatedBookings.length > 0) {
+              alert(`Blocked: Client '${selectedClient.name}' has ${associatedBookings.length} recorded bookings.\n\nDeleting this client would corrupt your financial history. Please delete their bookings first.`);
               return;
           }
 
-          // 2. Safety Check
-          if (!selectedClient) {
-              return;
+          // 4. Execute
+          if (onDeleteClient) {
+              onDeleteClient(selectedClient.id);
+              setSelectedClient(null);
+          } else {
+              alert("Delete function not available.");
           }
-
-          try {
-              // 3. Integrity Check
-              const validBookings = bookings || [];
-              const associatedBookings = validBookings.filter(b => b && b.clientId === selectedClient.id);
-              
-              if (associatedBookings.length > 0) {
-                  alert(`Blocked: Client '${selectedClient.name}' has ${associatedBookings.length} recorded bookings.\n\nDeleting this client would corrupt your financial history. Please delete their bookings first.`);
-                  return;
-              }
-
-              // 4. Execute
-              if (onDeleteClient) {
-                  onDeleteClient(selectedClient.id);
-                  setSelectedClient(null);
-              } else {
-                  alert("Delete function not available.");
-              }
-          } catch (err: any) {
-              console.error("Delete Client Error:", err);
-              alert("System error checking client history. Aborting.");
-          }
-      }, 50);
+      } catch (err: any) {
+          console.error("Delete Client Error:", err);
+          alert("System error checking client history. Aborting.");
+      }
   };
 
   const handleOpenWA = () => {

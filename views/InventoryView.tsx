@@ -90,33 +90,32 @@ const InventoryView: React.FC<InventoryViewProps> = ({ assets, users, onAddAsset
 
   const handleDelete = (e: React.MouseEvent, asset: Asset) => {
       e.stopPropagation();
-      e.preventDefault();
+      // Do not close menu yet to maintain context if possible, 
+      // though window.confirm pauses everything.
       
-      // Close the menu first to avoid UI glitch
-      setActiveMenu(null);
+      // 1. Immediate Confirmation
+      if (!window.confirm(`Permanently delete '${asset.name}'?`)) {
+          setActiveMenu(null); // Close menu if cancelled
+          return;
+      }
 
-      setTimeout(() => {
-          // 1. Immediate Confirmation
-          if (!window.confirm(`Permanently delete '${asset.name}'?`)) {
+      try {
+          // 2. Safe Status Check
+          if (asset && asset.status === 'IN_USE') {
+              alert(`Cannot delete '${asset.name}' because it is marked as IN USE.\n\nPlease return the item first.`);
+              setActiveMenu(null);
               return;
           }
 
-          try {
-              // 2. Safe Status Check
-              if (asset && asset.status === 'IN_USE') {
-                  alert(`Cannot delete '${asset.name}' because it is marked as IN USE.\n\nPlease return the item first.`);
-                  return;
-              }
-
-              // 3. Execute
-              if (onDeleteAsset) {
-                  onDeleteAsset(asset.id);
-              }
-          } catch (err: any) {
-              console.error("Asset Delete Error:", err);
-              alert("System error. Deletion prevented.");
+          // 3. Execute
+          if (onDeleteAsset) {
+              onDeleteAsset(asset.id);
           }
-      }, 50);
+          setActiveMenu(null); // Close menu after success
+      } catch (err: any) {
+          console.error("Asset Delete Error:", err);
+          alert("System error. Deletion prevented.");
+      }
   };
 
   const filteredAssets = assets.filter(a => {

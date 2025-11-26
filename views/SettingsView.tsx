@@ -65,31 +65,28 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
       e.stopPropagation(); 
       e.preventDefault();
       
-      // Use setTimeout to allow UI to update before blocking confirm
-      setTimeout(() => {
-          if (!window.confirm(`Are you sure you want to delete package '${pkg.name}'?`)) {
+      if (!window.confirm(`Are you sure you want to delete package '${pkg.name}'?`)) {
+          return;
+      }
+
+      try {
+          // Safe Integrity Check
+          const validBookings = bookings || [];
+          const isUsed = validBookings.some(b => (b?.package || '').toLowerCase() === (pkg.name || '').toLowerCase());
+          
+          if (isUsed) {
+              alert(`Cannot delete '${pkg.name}' because it is used in existing bookings.\n\nPlease mark it as INACTIVE instead to preserve history.`);
               return;
           }
 
-          try {
-              // Safe Integrity Check
-              const validBookings = bookings || [];
-              const isUsed = validBookings.some(b => (b?.package || '').toLowerCase() === (pkg.name || '').toLowerCase());
-              
-              if (isUsed) {
-                  alert(`Cannot delete '${pkg.name}' because it is used in existing bookings.\n\nPlease mark it as INACTIVE instead to preserve history.`);
-                  return;
-              }
-
-              // Execute
-              if (onDeletePackage) {
-                  onDeletePackage(pkg.id);
-              }
-          } catch (err: any) {
-              console.error(err);
-              alert(`System error during deletion: ${err.message}`);
+          // Execute
+          if (onDeletePackage) {
+              onDeletePackage(pkg.id);
           }
-      }, 50);
+      } catch (err: any) {
+          console.error(err);
+          alert(`System error during deletion: ${err.message}`);
+      }
   };
 
   const addFeature = () => {
@@ -193,40 +190,38 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
       e.stopPropagation();
       e.preventDefault();
 
-      setTimeout(() => {
-          // 1. Confirm First
-          if (!window.confirm(`Delete studio room '${name}'? This will remove it from future booking options.`)) {
+      // 1. Confirm First
+      if (!window.confirm(`Delete studio room '${name}'? This will remove it from future booking options.`)) {
+          return;
+      }
+
+      try {
+          // 2. Safe Integrity Check
+          const validBookings = bookings || [];
+          const hasActiveBookings = validBookings.some(b => {
+              if (!b || !b.studio) return false;
+              return b.studio.toLowerCase() === name.toLowerCase() && 
+                      b.status !== 'COMPLETED' && 
+                      b.status !== 'CANCELLED';
+          });
+          
+          if (hasActiveBookings) {
+              alert(`Cannot delete '${name}' because there are active bookings scheduled in this room.`);
               return;
           }
 
-          try {
-              // 2. Safe Integrity Check
-              const validBookings = bookings || [];
-              const hasActiveBookings = validBookings.some(b => {
-                  if (!b || !b.studio) return false;
-                  return b.studio.toLowerCase() === name.toLowerCase() && 
-                         b.status !== 'COMPLETED' && 
-                         b.status !== 'CANCELLED';
-              });
-              
-              if (hasActiveBookings) {
-                  alert(`Cannot delete '${name}' because there are active bookings scheduled in this room.`);
-                  return;
-              }
-
-              // 3. Execute
-              const updatedRooms = (localConfig.rooms || []).filter(r => r.id !== id);
-              const updatedConfig = { ...localConfig, rooms: updatedRooms };
-              setLocalConfig(updatedConfig);
-              
-              if (onUpdateConfig) {
-                  onUpdateConfig(updatedConfig); 
-              }
-          } catch (err: any) {
-              console.error("Delete Room Error:", err);
-              alert("Error checking bookings. See console.");
+          // 3. Execute
+          const updatedRooms = (localConfig.rooms || []).filter(r => r.id !== id);
+          const updatedConfig = { ...localConfig, rooms: updatedRooms };
+          setLocalConfig(updatedConfig);
+          
+          if (onUpdateConfig) {
+              onUpdateConfig(updatedConfig); 
           }
-      }, 50);
+      } catch (err: any) {
+          console.error("Delete Room Error:", err);
+          alert("Error checking bookings. See console.");
+      }
   };
 
   const handleExportData = () => {
