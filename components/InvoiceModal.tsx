@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { motion } from 'framer-motion';
 import { X, Printer, Download, Aperture } from 'lucide-react';
@@ -15,6 +14,9 @@ interface InvoiceModalProps {
 
 const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, booking, config }) => {
   if (!isOpen || !booking) return null;
+
+  // Determine Tax Rate: Use Snapshot if available, else fallback to current global config
+  const applicableTaxRate = booking.taxSnapshot !== undefined ? booking.taxSnapshot : (config.taxRate || 0);
 
   // Calculate Totals with Discount Logic
   // 1. Calculate Base Total from Items (or fallback price)
@@ -39,7 +41,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, booking, c
   const subtotalAfterDiscount = Math.max(0, subtotal - discountAmount);
 
   // 3. Calculate Tax on discounted amount
-  const taxAmount = (subtotalAfterDiscount * config.taxRate) / 100;
+  const taxAmount = (subtotalAfterDiscount * applicableTaxRate) / 100;
   
   // 4. Final Total
   const totalAmount = subtotalAfterDiscount + taxAmount;
@@ -183,7 +185,7 @@ const InvoiceModal: React.FC<InvoiceModalProps> = ({ isOpen, onClose, booking, c
                             )}
 
                             <div className="flex justify-between text-sm text-stone-600">
-                                <span>Tax (PPN {config.taxRate}%)</span>
+                                <span>Tax (PPN {applicableTaxRate}%)</span>
                                 <span className="font-mono">Rp {taxAmount.toLocaleString('id-ID')}</span>
                             </div>
                             <div className="border-t border-stone-300 pt-3 flex justify-between font-bold text-lg">

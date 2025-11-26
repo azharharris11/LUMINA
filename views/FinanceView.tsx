@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
@@ -42,7 +41,9 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
   
   // Logic Fix: Accounts Receivable must include Tax
   const getBookingFinancials = (b: any) => {
-      const taxRate = config.taxRate || 0;
+      // Use snapshot if available, else fallback to config (for legacy data)
+      const applicableTaxRate = b.taxSnapshot !== undefined ? b.taxSnapshot : (config.taxRate || 0);
+      
       // Recalculate based on items if available, else flat price
       let subtotal = b.price;
       if (b.items && b.items.length > 0) {
@@ -58,7 +59,7 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
       }
       const afterDiscount = Math.max(0, subtotal - discountAmount);
 
-      const taxAmount = afterDiscount * (taxRate / 100);
+      const taxAmount = afterDiscount * (applicableTaxRate / 100);
       const grandTotal = afterDiscount + taxAmount;
       const dueAmount = grandTotal - b.paidAmount;
       return { grandTotal, dueAmount };
@@ -144,15 +145,24 @@ const FinanceView: React.FC<FinanceViewProps> = ({ accounts, metrics, bookings, 
   const handleSettleSubmit = () => {
       if (onSettleBooking && settleForm.bookingId) {
           
-          // VALIDATION: Ensure not overpaying (Positive)
+          // VALIDATION 1: Ensure not overpaying (Positive)
           if (settleForm.amount > 0 && settleForm.amount > settleForm.maxAmount) {
               alert("Amount exceeds remaining balance!");
               return;
           }
-          // VALIDATION: Ensure not over-refunding (Negative)
+          // VALIDATION 2: Ensure not over-refunding (Negative)
           if (settleForm.amount < 0 && Math.abs(settleForm.amount) > settleForm.currentPaidAmount) {
               alert("Refund amount cannot exceed the total amount already paid!");
               return;
+          }
+
+          // VALIDATION 3 (NEW): Ensure Account has sufficient balance for Refund
+          if (settleForm.amount < 0) {
+              const sourceAccount = accounts.find(a => a.id === settleForm.accountId);
+              if (sourceAccount && sourceAccount.balance < Math.abs(settleForm.amount)) {
+                  alert(`Insufficient funds in ${sourceAccount.name} to process this refund.\nCurrent Balance: Rp ${sourceAccount.balance.toLocaleString()}`);
+                  return;
+              }
           }
           
           onSettleBooking(settleForm.bookingId, settleForm.amount, settleForm.accountId);

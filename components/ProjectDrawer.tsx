@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Booking, ProjectStatus, User, BookingFile, StudioConfig, Package, BookingItem, BookingTask, ActivityLog, Asset, BookingComment, Discount, TimeLog, Transaction, Account } from '../types';
@@ -43,8 +42,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   const [isUploading, setIsUploading] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Line Items State
-  const [newLineItem, setNewLineItem] = useState<Partial<BookingItem>>({ description: '', quantity: 1, unitPrice: 0 });
+  // Line Items State (Now includes Cost/COGS)
+  const [newLineItem, setNewLineItem] = useState<Partial<BookingItem>>({ description: '', quantity: 1, unitPrice: 0, cost: 0 });
 
   // Discount State
   const [editDiscount, setEditDiscount] = useState<Discount>({ type: 'FIXED', value: 0 });
@@ -307,7 +306,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                   description: `${booking.package} (Base Package)`,
                   quantity: 1,
                   unitPrice: booking.price,
-                  total: booking.price
+                  total: booking.price,
+                  cost: 0 // Assuming base cost is tracked elsewhere for migration
               });
           }
 
@@ -316,7 +316,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
               description: newLineItem.description,
               quantity: newLineItem.quantity || 1,
               unitPrice: newLineItem.unitPrice,
-              total: (newLineItem.quantity || 1) * newLineItem.unitPrice
+              total: (newLineItem.quantity || 1) * newLineItem.unitPrice,
+              cost: newLineItem.cost || 0 // Add COGS
           };
 
           const updatedItems = [...currentItems, newItem];
@@ -331,7 +332,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
               logs: [log, ...(booking.logs || [])]
           });
 
-          setNewLineItem({ description: '', quantity: 1, unitPrice: 0 });
+          setNewLineItem({ description: '', quantity: 1, unitPrice: 0, cost: 0 });
       }
   };
 
@@ -521,7 +522,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
 
   const subtotalAfterDiscount = Math.max(0, calculatedSubtotal - discountAmount);
 
-  const taxRate = config?.taxRate || 0;
+  // Use snapshot tax if available
+  const taxRate = booking.taxSnapshot !== undefined ? booking.taxSnapshot : (config?.taxRate || 0);
   const taxAmount = subtotalAfterDiscount * (taxRate / 100);
   const grandTotal = subtotalAfterDiscount + taxAmount;
 
@@ -542,6 +544,9 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   }
   
   const totalBaseCost = packageCostBreakdown.reduce((acc, item) => acc + item.amount, 0);
+  
+  // Calculate costs from custom line items
+  const totalCustomItemCost = currentItems.reduce((acc, item) => acc + (item.cost || 0), 0);
 
   // Calculate Labor Costs (Commissions)
   const photographerCommission = photographer?.commissionRate ? grandTotal * (photographer.commissionRate / 100) : 0;
@@ -554,8 +559,8 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   }
   const totalLaborCost = photographerCommission + editorCommission;
   
-  // Adjusted Profit Formula: Revenue - (Direct Exp + Labor + Base Cost)
-  const totalCost = totalDirectExpenses + totalLaborCost + totalBaseCost;
+  // Adjusted Profit Formula: Revenue - (Direct Exp + Labor + Base Cost + Custom Item Cost)
+  const totalCost = totalDirectExpenses + totalLaborCost + totalBaseCost + totalCustomItemCost;
   const netProfit = grandTotal - totalCost;
   const profitMargin = grandTotal > 0 ? (netProfit / grandTotal) * 100 : 0;
 
@@ -856,6 +861,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                     <input 
                                         type="number"
                                         className="w-full bg-transparent border-b border-lumina-highlight p-1 text-xs text-white text-center focus:border-lumina-accent outline-none transition-colors"
+                                        placeholder="Qty"
                                         value={newLineItem.quantity}
                                         onChange={e => setNewLineItem({...newLineItem, quantity: Number(e.target.value)})}
                                     />
@@ -867,7 +873,17 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                         placeholder="Price"
                                         value={newLineItem.unitPrice}
                                         onChange={e => setNewLineItem({...newLineItem, unitPrice: Number(e.target.value)})}
+                                    />
+                                </div>
+                                <div className="w-20">
+                                    <input 
+                                        type="number"
+                                        className="w-full bg-transparent border-b border-lumina-highlight p-1 text-xs text-amber-400 text-right focus:border-lumina-accent outline-none transition-colors"
+                                        placeholder="Cost (Opt)"
+                                        value={newLineItem.cost || ''}
+                                        onChange={e => setNewLineItem({...newLineItem, cost: Number(e.target.value)})}
                                         onKeyDown={e => e.key === 'Enter' && addLineItem()}
+                                        title="Cost of Goods Sold (Optional)"
                                     />
                                 </div>
                                 <button onClick={addLineItem} disabled={!newLineItem.description} className="text-lumina-accent hover:text-white disabled:opacity-30"><Plus size={16}/></button>
@@ -978,12 +994,23 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                                             <span className="font-mono text-rose-300">- Rp {t.amount.toLocaleString()}</span>
                                         </div>
                                     ))}
+
+                                    {/* Custom Item Costs */}
+                                    {currentItems.filter(i => i.cost && i.cost > 0).map(item => (
+                                        <div key={`cost-${item.id}`} className="flex justify-between items-center text-xs text-lumina-muted border-b border-lumina-highlight/50 pb-1">
+                                            <span className="flex items-center gap-1">
+                                                <Tag size={10} className="text-purple-400" />
+                                                Cost: {item.description}
+                                            </span>
+                                            <span className="font-mono text-rose-300">- Rp {(item.cost || 0).toLocaleString()}</span>
+                                        </div>
+                                    ))}
                                     
-                                    {projectExpenses.length === 0 && packageCostBreakdown.length === 0 && <p className="text-xs text-lumina-muted italic">No direct expenses recorded.</p>}
+                                    {projectExpenses.length === 0 && packageCostBreakdown.length === 0 && totalCustomItemCost === 0 && <p className="text-xs text-lumina-muted italic">No direct expenses recorded.</p>}
                                 </div>
                                 <div className="flex justify-between items-center pt-2 mt-1">
                                     <span className="text-xs font-bold text-white">Total COGS</span>
-                                    <span className="text-sm font-bold font-mono text-rose-400">- Rp {(totalDirectExpenses + totalBaseCost).toLocaleString()}</span>
+                                    <span className="text-sm font-bold font-mono text-rose-400">- Rp {(totalDirectExpenses + totalBaseCost + totalCustomItemCost).toLocaleString()}</span>
                                 </div>
                             </div>
 

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { User, Account, Booking, ProjectStatus, Client, StudioRoom, StudioConfig, BookingItem, Discount } from '../types';
@@ -43,8 +42,10 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
   const [selectedClient, setSelectedClient] = useState<Client | null>(null); // Track full client obj
 
   const [error, setError] = useState<string | null>(null);
+  const [softConflictWarning, setSoftConflictWarning] = useState<string | null>(null); // NEW
   const [problematicWarning, setProblematicWarning] = useState<string | null>(null);
   const [adminOverride, setAdminOverride] = useState(false); // State for override toggle
+  const [softBookingOverride, setSoftBookingOverride] = useState(false); // NEW
   
   // CONSTANTS FOR BUSINESS LOGIC
   const BUFFER_MINUTES = config.bufferMinutes || 15; 
@@ -73,7 +74,9 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
           setSelectedClient(null);
           setError(null);
           setProblematicWarning(null);
+          setSoftConflictWarning(null);
           setAdminOverride(false);
+          setSoftBookingOverride(false);
           setDiscount({ type: 'FIXED', value: 0 });
           setIsLead(false);
       }
@@ -113,7 +116,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
       }));
   };
 
-  const checkConflict = (): { type: 'ROOM' | 'PHOTOGRAPHER' | 'HOURS' | 'CLIENT', message: string } | null => {
+  const checkConflict = (): { type: 'ROOM' | 'PHOTOGRAPHER' | 'HOURS' | 'CLIENT', message: string, isSoft?: boolean } | null => {
       if (!formData.date || !formData.timeStart) return null;
       
       const newDurationMins = formData.durationMinutes;
@@ -155,10 +158,14 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
           const isOverlapping = (newStartTime < bEndWithBuffer) && (newEndTime > bStartWithBuffer);
 
           if (isOverlapping) {
+              // Soft Booking Check: If existing booking is INQUIRY, allow override with warning
+              const isSoftConflict = b.status === 'INQUIRY';
+
               if (b.studio === formData.studio) {
                   return {
                       type: 'ROOM',
-                      message: `Studio Conflict! ${b.studio} is booked by ${b.clientName} (${b.timeStart} - ${formatTime(bEndTime)}). Please allow ${BUFFER_MINUTES}m gap.`
+                      message: `Studio Conflict! ${b.studio} is booked by ${b.clientName} (${b.timeStart} - ${formatTime(bEndTime)}). ${isSoftConflict ? 'Existing booking is just an Inquiry.' : ''}`,
+                      isSoft: isSoftConflict
                   };
               }
               
@@ -166,7 +173,8 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
                   const photographerName = photographers.find(p => p.id === formData.photographerId)?.name || 'Photographer';
                   return {
                       type: 'PHOTOGRAPHER',
-                      message: `Staff Conflict! ${photographerName} is already shooting for ${b.clientName} in ${b.studio} at this time.`
+                      message: `Staff Conflict! ${photographerName} is already shooting for ${b.clientName} in ${b.studio} at this time.`,
+                      isSoft: isSoftConflict
                   };
               }
 
@@ -194,6 +202,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
   const handleSubmit = async (e: React.FormEvent) => {
       e.preventDefault();
       setError(null);
+      setSoftConflictWarning(null);
 
       if (problematicWarning && !adminOverride) {
           setError("Client is flagged as PROBLEMATIC. Booking blocked by system policy.");
@@ -202,8 +211,16 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
 
       const conflict = checkConflict();
       if (conflict) {
-          setError(conflict.message);
-          return;
+          if (conflict.isSoft) {
+              if (!softBookingOverride) {
+                  setSoftConflictWarning(`SOFT CONFLICT: ${conflict.message}\nYou can override this because the existing booking is only an Inquiry.`);
+                  return;
+              }
+              // If overridden, proceed
+          } else {
+              setError(conflict.message);
+              return;
+          }
       }
       
       if (!formData.studio) {
@@ -274,6 +291,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
               comments: [],
               timeLogs: [],
               costSnapshot: costSnapshot,
+              taxSnapshot: config.taxRate, // SNAPSHOT TAX RATE
               clientId: finalClientId // Link the ID
           };
           
@@ -358,6 +376,27 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
                 <Motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-red-500/10 border border-red-500/30 p-4 rounded-lg flex items-center gap-3">
                     <AlertCircle className="text-red-500 w-5 h-5 shrink-0" />
                     <p className="text-sm text-red-200 font-medium">{error}</p>
+                </Motion.div>
+            )}
+
+            {softConflictWarning && (
+                <Motion.div initial={{ opacity: 0, y: -10 }} animate={{ opacity: 1, y: 0 }} className="bg-blue-500/10 border border-blue-500/30 p-4 rounded-lg flex flex-col gap-2">
+                    <div className="flex items-start gap-3">
+                        <AlertCircle className="text-blue-500 w-5 h-5 shrink-0 mt-0.5" />
+                        <div>
+                            <p className="text-sm text-blue-200 font-bold">SOFT CONFLICT (INQUIRY)</p>
+                            <p className="text-xs text-blue-200/80 whitespace-pre-wrap">{softConflictWarning}</p>
+                        </div>
+                    </div>
+                    <label className="flex items-center gap-2 mt-2 pt-2 border-t border-blue-500/20 cursor-pointer">
+                        <input 
+                            type="checkbox" 
+                            checked={softBookingOverride} 
+                            onChange={e => setSoftBookingOverride(e.target.checked)}
+                            className="w-4 h-4 rounded bg-lumina-base border-blue-500/50 text-blue-500 focus:ring-blue-500"
+                        />
+                        <span className="text-xs font-bold text-blue-100 uppercase">Force Booking (Double Book)</span>
+                    </label>
                 </Motion.div>
             )}
 
@@ -692,7 +731,7 @@ const NewBookingModal: React.FC<NewBookingModalProps> = ({ isOpen, onClose, phot
                     disabled={!!problematicWarning && !adminOverride}
                     className="px-8 py-2.5 rounded-xl font-bold bg-lumina-accent text-lumina-base hover:bg-lumina-accent/90 transition-all shadow-lg shadow-lumina-accent/20 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                    {!!problematicWarning && !adminOverride ? 'Blocked' : isLead ? 'Save Inquiry' : 'Create Booking'}
+                    {!!problematicWarning && !adminOverride ? 'Blocked' : isLead ? 'Save Inquiry' : softBookingOverride ? 'Force Book' : 'Create Booking'}
                 </button>
             </div>
 

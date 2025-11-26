@@ -46,6 +46,7 @@ export interface BookingItem {
   description: string;
   quantity: number;
   unitPrice: number;
+  cost?: number; // NEW: Cost of Goods Sold for this specific item
   total: number;
 }
 
@@ -129,6 +130,7 @@ export interface Booking {
   timeLogs?: TimeLog[];
   
   costSnapshot?: PackageCostItem[];
+  taxSnapshot?: number; // NEW: Snapshot of tax rate at time of booking
   ownerId?: string;
 }
 
