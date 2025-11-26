@@ -229,7 +229,7 @@ const ClientsView: React.FC<ClientsViewProps> = ({ clients, bookings, onUpdateCl
                                     className="p-2 bg-rose-500/10 border border-rose-500/30 rounded hover:bg-rose-500 hover:text-white text-rose-500 transition-colors z-20 cursor-pointer" 
                                     title="Delete Client"
                                 >
-                                    <Trash2 size={16} />
+                                    <Trash2 size={16} className="pointer-events-none" />
                                 </button>
                                 <button onClick={handleEdit} className="p-2 text-lumina-muted hover:text-white transition-colors">
                                     <Edit2 size={16} />

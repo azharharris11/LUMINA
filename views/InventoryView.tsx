@@ -89,32 +89,38 @@ const InventoryView: React.FC<InventoryViewProps> = ({ assets, users, onAddAsset
   };
 
   const handleDelete = (e: React.MouseEvent, asset: Asset) => {
+      // 1. Prevent event bubbling immediately
+      e.preventDefault();
       e.stopPropagation();
-      // Do not close menu yet to maintain context if possible, 
-      // though window.confirm pauses everything.
       
-      // 1. Immediate Confirmation
+      // CRITICAL: Do NOT call setActiveMenu(null) here. 
+      // If we close the menu, this component unmounts, and the code below stops running or confirm fails.
+
+      // 2. Immediate Sync Confirmation
       if (!window.confirm(`Permanently delete '${asset.name}'?`)) {
-          setActiveMenu(null); // Close menu if cancelled
+          setActiveMenu(null); // Close menu if user cancels
           return;
       }
 
       try {
-          // 2. Safe Status Check
+          // 3. Integrity Check
           if (asset && asset.status === 'IN_USE') {
               alert(`Cannot delete '${asset.name}' because it is marked as IN USE.\n\nPlease return the item first.`);
               setActiveMenu(null);
               return;
           }
 
-          // 3. Execute
+          // 4. Execute
           if (onDeleteAsset) {
               onDeleteAsset(asset.id);
           }
-          setActiveMenu(null); // Close menu after success
+          
+          // 5. Close menu ONLY after successful execution
+          setActiveMenu(null);
       } catch (err: any) {
           console.error("Asset Delete Error:", err);
           alert("System error. Deletion prevented.");
+          setActiveMenu(null);
       }
   };
 
@@ -240,7 +246,13 @@ const InventoryView: React.FC<InventoryViewProps> = ({ assets, users, onAddAsset
                                         <Wrench size={12}/> Report Issue
                                     </button>
                                     <div className="border-t border-lumina-highlight my-1"></div>
-                                    <button type="button" onClick={(e) => handleDelete(e, asset)} className="px-3 py-2 text-left text-xs hover:bg-rose-900/30 text-rose-500 flex items-center gap-2 w-full"><Trash size={12} className="pointer-events-none"/> Delete</button>
+                                    <button 
+                                        type="button" 
+                                        onClick={(e) => handleDelete(e, asset)} 
+                                        className="px-3 py-2 text-left text-xs hover:bg-rose-900/30 text-rose-500 flex items-center gap-2 w-full"
+                                    >
+                                        <Trash size={12} className="pointer-events-none"/> Delete
+                                    </button>
                                 </div>
                             )}
                     </div>

@@ -19,7 +19,7 @@ import NewBookingModal from './components/NewBookingModal';
 import CommandPalette from './components/CommandPalette';
 import ProjectDrawer from './components/ProjectDrawer';
 import { USERS, ACCOUNTS as INITIAL_ACCOUNTS, BOOKINGS as INITIAL_BOOKINGS, ASSETS as INITIAL_ASSETS, TRANSACTIONS as INITIAL_TRANSACTIONS, PACKAGES as INITIAL_PACKAGES, CLIENTS as INITIAL_CLIENTS, NOTIFICATIONS, STUDIO_CONFIG as INITIAL_CONFIG } from './data';
-import { User, Booking, Asset, Notification, Account, Transaction, Client, Package, StudioConfig, BookingTask, ActivityLog, PublicBookingSubmission } from './types';
+import { User, Booking, Asset, Notification, Account, Transaction, Client, Package, StudioConfig, BookingTask, ActivityLog, PublicBookingSubmission, StudioRoom } from './types';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Bell, Check, Info, AlertTriangle, Search, Database, CheckCheck, Trash, WifiOff, Cloud, ShieldAlert, ExternalLink, X, RefreshCcw } from 'lucide-react';
 import { auth, db } from './firebase';
@@ -49,45 +49,49 @@ const PermissionErrorHelp = ({ onClose }: { onClose: () => void }) => (
             <AlertTriangle className="text-red-500 w-8 h-8" />
         </div>
         <div>
-            <h2 className="text-2xl font-bold text-white mb-2">Database Permission Denied</h2>
+            <h2 className="text-2xl font-bold text-white mb-2">Setup Database Rules (SaaS Mode)</h2>
             <p className="text-gray-400 text-sm leading-relaxed">
-                The app is connected to Firebase, but the <strong>Firestore Security Rules</strong> are blocking access to shared data (Bookings, Clients, etc).
+                Your app is now running in <strong>Multi-Tenant SaaS Mode</strong>. 
+                You must update your Firestore Security Rules to isolate user data.
             </p>
         </div>
       </div>
       
       <div className="space-y-4">
-          <p className="text-white font-bold text-sm">To fix this, paste the following rules into your Firebase Console:</p>
+          <p className="text-white font-bold text-sm">Copy this into Firebase Console > Firestore > Rules:</p>
           <div className="bg-black p-4 rounded-lg border border-gray-700 font-mono text-xs text-emerald-400 overflow-x-auto relative custom-scrollbar">
             <pre>{`rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Allow any logged-in user to read/write these shared collections
-    match /bookings/{document=**} { allow read, write: if request.auth != null; }
-    match /clients/{document=**} { allow read, write: if request.auth != null; }
-    match /transactions/{document=**} { allow read, write: if request.auth != null; }
-    match /users/{document=**} { allow read, write: if request.auth != null; }
-    match /assets/{document=**} { allow read, write: if request.auth != null; }
-    match /accounts/{document=**} { allow read, write: if request.auth != null; }
-    match /packages/{document=**} { allow read, write: if request.auth != null; }
-    match /notifications/{document=**} { allow read, write: if request.auth != null; }
-    match /studio/{document=**} { allow read, write: if request.auth != null; }
+    
+    function isOwner() {
+      return request.auth != null && request.resource.data.ownerId == request.auth.uid;
+    }
+    function isOwnerOfExisting() {
+      return request.auth != null && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /{collection}/{document=**} {
+      allow create: if isOwner();
+      allow read, update, delete: if isOwnerOfExisting();
+    }
+
+    match /users/{userId} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
+
+    match /studios/{studioId} {
+      allow read, write: if request.auth != null && request.auth.uid == studioId;
+    }
   }
 }`}</pre>
-          </div>
-          <div className="flex gap-4 text-xs text-gray-500 mt-2">
-              <span>1. Go to Firebase Console</span>
-              <span>&gt;</span>
-              <span>Firestore Database</span>
-              <span>&gt;</span>
-              <span>Rules Tab</span>
           </div>
       </div>
       
       <div className="flex justify-end gap-3 mt-8 pt-6 border-t border-gray-800">
         <button onClick={onClose} className="px-4 py-2 text-gray-400 hover:text-white font-bold text-sm transition-colors">Close & Retry</button>
         <a href="https://console.firebase.google.com/" target="_blank" rel="noreferrer" className="px-6 py-2 bg-red-600 text-white rounded-lg font-bold hover:bg-red-700 flex items-center gap-2 transition-colors shadow-lg shadow-red-600/20">
-          Open Firebase Console <ExternalLink size={16} />
+          Open Console <ExternalLink size={16} />
         </a>
       </div>
     </div>
@@ -117,20 +121,22 @@ const App: React.FC = () => {
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [bookingPrefill, setBookingPrefill] = useState<{date:string, time:string, studio:string} | undefined>(undefined);
 
-  // Data
+  // Data - Initialize with empty arrays to avoid showing dummy data in SaaS mode
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [clients, setClients] = useState<Client[]>([]);
-  const [accounts, setAccounts] = useState<Account[]>(INITIAL_ACCOUNTS); 
+  const [accounts, setAccounts] = useState<Account[]>([]); 
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [packages, setPackages] = useState<Package[]>([]);
-  const [notifications, setNotifications] = useState<Notification[]>(NOTIFICATIONS);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [config, setConfig] = useState<StudioConfig>(INITIAL_CONFIG);
 
   // Derived Data
   const selectedBooking = bookings.find(b => b.id === selectedBookingId) || null;
-  const activePhotographers = users.filter(u => u.role === 'PHOTOGRAPHER' && u.status === 'ACTIVE');
+  // In single-owner SaaS mode, active photographers are just the owner + any invited staff (future feature)
+  // For now, we show the current user as the photographer option
+  const activePhotographers = users.length > 0 ? users : [currentUser];
 
   // Key Bindings
   useEffect(() => {
@@ -147,7 +153,10 @@ const App: React.FC = () => {
   // Connection Check
   const checkConnection = async () => {
       try {
-          const testDoc = await getDoc(doc(db, "studio", "config"));
+          // Check user specific config doc
+          if (currentUser.id) {
+             await getDoc(doc(db, "studios", currentUser.id));
+          }
           setIsOfflineMode(false);
           setPermissionError(false);
       } catch (e: any) {
@@ -164,28 +173,31 @@ const App: React.FC = () => {
                   const userDocRef = doc(db, "users", firebaseUser.uid);
                   const userDocSnap = await getDoc(userDocRef);
                   let userData: any;
+                  
                   if (userDocSnap.exists()) {
                       userData = userDocSnap.data();
                   } else {
+                      // First time login sync (if register view didn't catch it)
                       const newProfile = {
                           uid: firebaseUser.uid,
-                          name: firebaseUser.displayName || 'User',
+                          name: firebaseUser.displayName || 'Studio Owner',
                           email: firebaseUser.email || '',
                           role: 'OWNER',
                           avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${firebaseUser.displayName || 'User'}`,
                           createdAt: new Date().toISOString(),
                           phone: '',
                           status: 'ACTIVE',
-                          studioName: 'My Studio'
+                          studioName: 'My Studio',
+                          ownerId: firebaseUser.uid // Owns their own profile
                       };
-                      // Attempt to write, might fail if rules are strict
                       try {
                         await setDoc(userDocRef, newProfile);
                       } catch(e) {
-                          console.warn("Could not create user profile doc yet", e);
+                          console.warn("Could not create user profile doc", e);
                       }
                       userData = newProfile;
                   }
+                  
                   setCurrentUser({
                       id: firebaseUser.uid,
                       name: userData.name,
@@ -206,17 +218,6 @@ const App: React.FC = () => {
                   } else if (navigator.onLine === false || e.code === 'unavailable') {
                       setIsOfflineMode(true);
                   }
-                  
-                  setCurrentUser({
-                      id: firebaseUser.uid,
-                      name: firebaseUser.displayName || 'User',
-                      email: firebaseUser.email || '',
-                      role: 'OWNER',
-                      avatar: firebaseUser.photoURL || '',
-                      phone: '',
-                      status: 'ACTIVE',
-                      joinedDate: new Date().toISOString()
-                  });
               }
               setIsLoggedIn(true);
               setHasSeenLanding(true);
@@ -228,335 +229,341 @@ const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-      if (!isLoggedIn) return;
-      
+      if (!isLoggedIn || !currentUser.id) return;
       if (permissionError) return;
 
       if (isOfflineMode) {
-          setBookings(loadState('bookings', INITIAL_BOOKINGS));
-          setClients(loadState('clients', INITIAL_CLIENTS));
-          setAssets(loadState('assets', INITIAL_ASSETS));
-          setTransactions(loadState('transactions', INITIAL_TRANSACTIONS));
-          setPackages(loadState('packages', INITIAL_PACKAGES));
-          setUsers(loadState('users', USERS));
-          setConfig(loadState('config', INITIAL_CONFIG));
-          setAccounts(loadState('accounts', INITIAL_ACCOUNTS));
-          setNotifications(loadState('notifications', NOTIFICATIONS));
+          // Load offline fallback
+          setBookings(loadState('bookings', []));
+          setClients(loadState('clients', []));
+          setAssets(loadState('assets', []));
+          setTransactions(loadState('transactions', []));
+          setPackages(loadState('packages', []));
+          setAccounts(loadState('accounts', []));
           return;
       }
 
-      const handleSyncError = (err: any, collectionName: string) => {
-          console.error(`Error syncing ${collectionName}:`, err);
-          if (err.code === 'permission-denied') {
-              setPermissionError(true);
-          } else if (err.code === 'unavailable' || navigator.onLine === false) {
-              setIsOfflineMode(true);
-          }
+      // SAAS LOGIC: Filter all queries by ownerId
+      const q = (col: string) => query(collection(db, col), where("ownerId", "==", currentUser.id));
+
+      // Global error handler for snapshots
+      const handleSnapshotError = (err: any) => {
+          console.error("Snapshot Error:", err);
+          if (err.code === 'permission-denied') setPermissionError(true);
       };
 
-      const unsubBookings = onSnapshot(collection(db, "bookings"), (snap) => {
-          if(!snap.empty) setBookings(snap.docs.map(d => d.data() as Booking));
-      }, (e) => handleSyncError(e, "bookings"));
-      
-      const unsubClients = onSnapshot(collection(db, "clients"), (snap) => {
-          if(!snap.empty) setClients(snap.docs.map(d => d.data() as Client));
-      }, (e) => handleSyncError(e, "clients"));
-      
-      const unsubAssets = onSnapshot(collection(db, "assets"), (snap) => {
-          if(!snap.empty) setAssets(snap.docs.map(d => d.data() as Asset));
-      }, (e) => handleSyncError(e, "assets"));
-      
-      const unsubTransactions = onSnapshot(collection(db, "transactions"), (snap) => {
-          if(!snap.empty) setTransactions(snap.docs.map(d => d.data() as Transaction));
-      }, (e) => handleSyncError(e, "transactions"));
-      
-      const unsubPackages = onSnapshot(collection(db, "packages"), (snap) => {
-          if(!snap.empty) setPackages(snap.docs.map(d => d.data() as Package));
-      }, (e) => handleSyncError(e, "packages"));
-      
-      const unsubUsers = onSnapshot(collection(db, "users"), (snap) => {
-          if(!snap.empty) setUsers(snap.docs.map(d => { const u = d.data(); return { id: u.uid, name: u.name, role: u.role, email: u.email, avatar: u.avatar, phone: u.phone, status: u.status, joinedDate: u.createdAt, unavailableDates: u.unavailableDates } as User; }));
-      }, (e) => handleSyncError(e, "users"));
-      
-      const unsubAccounts = onSnapshot(collection(db, "accounts"), (snap) => { 
-          if(!snap.empty) {
-              setAccounts(snap.docs.map(d => d.data() as Account)); 
+      // 1. Config Sync (Per User)
+      // FIX: Renamed 'doc' to 'snapshot' to prevent shadowing the imported doc function
+      const unsubConfig = onSnapshot(doc(db, "studios", currentUser.id), (snapshot) => {
+          if (snapshot.exists()) {
+              setConfig(snapshot.data() as StudioConfig);
           } else {
-              // Seed initial accounts if empty and online
-              if (navigator.onLine && !permissionError) {
-                  const batch = writeBatch(db);
-                  INITIAL_ACCOUNTS.forEach(acc => {
-                      batch.set(doc(db, "accounts", acc.id), acc);
-                  });
-                  batch.commit().catch(console.error);
-              }
+              // Initialize default config for new SaaS user
+              const initialConfigWithId = { ...INITIAL_CONFIG, ownerId: currentUser.id };
+              setDoc(doc(db, "studios", currentUser.id), initialConfigWithId);
+              setConfig(initialConfigWithId);
           }
-      }, (e) => handleSyncError(e, "accounts"));
-      
-      const unsubNotifications = onSnapshot(collection(db, "notifications"), (snap) => {
-          if(!snap.empty) setNotifications(snap.docs.map(d => d.data() as Notification));
-      }, (e) => handleSyncError(e, "notifications"));
-      
-      const configRef = doc(db, "studio", "config");
-      const unsubConfig = onSnapshot(configRef, (s) => { if(s.exists()) setConfig(s.data() as StudioConfig); }, (e) => handleSyncError(e, "config"));
+      }, handleSnapshotError);
+
+      const unsubBookings = onSnapshot(q("bookings"), (snapshot) => {
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Booking));
+          setBookings(data);
+          localStorage.setItem('lumina_bookings', JSON.stringify(data));
+      }, handleSnapshotError);
+
+      const unsubClients = onSnapshot(q("clients"), (snapshot) => {
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Client));
+          setClients(data);
+          localStorage.setItem('lumina_clients', JSON.stringify(data));
+      }, handleSnapshotError);
+
+      const unsubAssets = onSnapshot(q("assets"), (snapshot) => {
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Asset));
+          setAssets(data);
+      }, handleSnapshotError);
+
+      const unsubTransactions = onSnapshot(q("transactions"), (snapshot) => {
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Transaction));
+          setTransactions(data);
+          localStorage.setItem('lumina_transactions', JSON.stringify(data));
+      }, handleSnapshotError);
+
+      const unsubPackages = onSnapshot(q("packages"), (snapshot) => {
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Package));
+          // Seed default packages if empty
+          if (data.length === 0) {
+              INITIAL_PACKAGES.forEach(p => {
+                  setDoc(doc(db, "packages", p.id), { ...p, ownerId: currentUser.id });
+              });
+          } else {
+              setPackages(data);
+          }
+      }, handleSnapshotError);
+
+      const unsubAccounts = onSnapshot(q("accounts"), (snapshot) => {
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Account));
+          // Seed default accounts if empty
+          if (data.length === 0) {
+              INITIAL_ACCOUNTS.forEach(a => {
+                  setDoc(doc(db, "accounts", a.id), { ...a, ownerId: currentUser.id });
+              });
+          } else {
+              setAccounts(data);
+          }
+      }, handleSnapshotError);
+
+      const unsubNotifications = onSnapshot(q("notifications"), (snapshot) => {
+          const data = snapshot.docs.map(d => ({ id: d.id, ...d.data() } as Notification));
+          setNotifications(data);
+      }, handleSnapshotError);
+
+      // Fetch Users (Team members belonging to this owner)
+      setUsers([currentUser]); 
 
       return () => {
-          unsubBookings(); unsubClients(); unsubAssets(); unsubTransactions(); unsubPackages(); unsubUsers(); unsubAccounts(); unsubNotifications(); unsubConfig();
+          unsubConfig();
+          unsubBookings();
+          unsubClients();
+          unsubAssets();
+          unsubTransactions();
+          unsubPackages();
+          unsubAccounts();
+          unsubNotifications();
       };
-  }, [isLoggedIn, isOfflineMode, permissionError]);
+  }, [isLoggedIn, currentUser.id, isOfflineMode, permissionError]);
 
-  // Handlers
-  const handleAddBooking = async (b: Booking, p?: { amount: number, accountId: string }) => {
-      if(isOfflineMode || permissionError) { 
-          setBookings(prev => [...prev, b]); 
-          if(p && p.amount > 0) {
-              setAccounts(prev => prev.map(a => a.id === p.accountId ? {...a, balance: a.balance + p.amount} : a));
-          }
-          return; 
-      }
-      try {
-          const batch = writeBatch(db);
-          batch.set(doc(db, "bookings", b.id), b);
-          
-          if(p && p.amount > 0) {
-              const trxRef = doc(collection(db, "transactions"));
-              const trx: Transaction = { id: trxRef.id, date: new Date().toISOString(), description: `Payment: ${b.clientName}`, amount: p.amount, type: 'INCOME', accountId: p.accountId, category: 'Sales', status: 'COMPLETED', bookingId: b.id };
-              batch.set(trxRef, trx);
-              
-              // Use set with merge:true to create account if it doesn't exist
-              const accRef = doc(db, "accounts", p.accountId);
-              batch.set(accRef, { 
-                  balance: increment(p.amount) 
-              }, { merge: true });
-          }
-          await batch.commit();
-          setViewDate(b.date);
-      } catch(e: any) { 
-          console.error("Error adding booking:", e); 
-          if (e.code === 'permission-denied') setPermissionError(true);
-      }
-  };
+  // --- CRUD HANDLERS (SaaS Enabled) ---
 
-  const handleUpdateBooking = async (b: Booking) => {
-      if(isOfflineMode || permissionError) { setBookings(prev => prev.map(x => x.id === b.id ? b : x)); return; }
-      try { await setDoc(doc(db, "bookings", b.id), b); } catch(e: any) { console.error(e); if(e.code === 'permission-denied') setPermissionError(true); }
-  };
-
-  // OPTIMISTIC DELETION HANDLERS
-  const handleDeleteBooking = async (id: string) => {
-      console.log("Deleting booking:", id);
-      const originalBookings = [...bookings];
-      // Optimistic Update
-      setBookings(prev => prev.filter(x => x.id !== id));
-      
-      if(isOfflineMode || permissionError) return;
-
-      try { 
-          await deleteDoc(doc(db, "bookings", id)); 
-      } catch(e: any) { 
-          console.error(e);
-          alert(`Failed to delete booking: ${e.message}`);
-          setBookings(originalBookings); // Rollback
-      }
-  };
-
-  const handleAddClient = async (c: Client) => {
-      if(isOfflineMode || permissionError) { setClients(prev => [...prev, c]); return; }
-      try { await setDoc(doc(db, "clients", c.id), c); } catch(e: any) { console.error(e); }
-  };
-
-  const handleUpdateClient = async (c: Client) => {
-      if(isOfflineMode || permissionError) { setClients(prev => prev.map(x => x.id === c.id ? c : x)); return; }
-      try { await setDoc(doc(db, "clients", c.id), c); } catch(e: any) { console.error(e); }
-  };
-
-  const handleDeleteClient = async (id: string) => {
-      console.log("Deleting client:", id);
-      const originalClients = [...clients];
-      // Optimistic
-      setClients(prev => prev.filter(x => x.id !== id));
-
-      if(isOfflineMode || permissionError) return;
-
-      try { 
-          await deleteDoc(doc(db, "clients", id)); 
-      } catch(e: any) { 
-          console.error(e); 
-          alert(`Failed to delete client: ${e.message}`);
-          setClients(originalClients);
-      }
-  };
-
-  const handleAddAsset = async (a: Asset) => {
-      if(isOfflineMode || permissionError) { setAssets(prev => [...prev, a]); return; }
-      try { await setDoc(doc(db, "assets", a.id), a); } catch(e: any) { console.error(e); }
-  };
-
-  const handleUpdateAsset = async (a: Asset) => {
-      if(isOfflineMode || permissionError) { setAssets(prev => prev.map(x => x.id === a.id ? a : x)); return; }
-      try { await setDoc(doc(db, "assets", a.id), a); } catch(e: any) { console.error(e); }
-  };
-
-  const handleDeleteAsset = async (id: string) => {
-      console.log("Deleting asset:", id);
-      const originalAssets = [...assets];
-      setAssets(prev => prev.filter(x => x.id !== id));
-
-      if(isOfflineMode || permissionError) return;
-
-      try { 
-          await deleteDoc(doc(db, "assets", id)); 
-      } catch(e: any) { 
-          console.error(e); 
-          alert(`Failed to delete asset: ${e.message}`);
-          setAssets(originalAssets);
-      }
-  };
-
-  const handleTransfer = async (fromId: string, toId: string, amount: number) => {
-      if(isOfflineMode || permissionError) { 
-          setAccounts(prev => prev.map(a => a.id === fromId ? {...a, balance: a.balance - amount} : a.id === toId ? {...a, balance: a.balance + amount} : a));
-          return; 
-      }
-      try {
-          const batch = writeBatch(db);
-          
-          const fromAccRef = doc(db, "accounts", fromId);
-          batch.set(fromAccRef, { balance: increment(-amount) }, { merge: true });
-          
-          const toAccRef = doc(db, "accounts", toId);
-          batch.set(toAccRef, { balance: increment(amount) }, { merge: true });
-          
-          const trxRef = doc(collection(db, "transactions"));
-          batch.set(trxRef, {
-              id: trxRef.id,
-              date: new Date().toISOString(),
-              description: 'Internal Transfer',
-              amount: amount,
-              type: 'TRANSFER',
-              accountId: fromId,
-              relatedAccountId: toId,
-              category: 'Internal',
-              status: 'COMPLETED'
-          });
-          await batch.commit();
-      } catch(e: any) { console.error(e); }
-  };
-
-  const handleRecordExpense = async (data: { description: string; amount: number; category: string; accountId: string; bookingId?: string }) => {
-      if(isOfflineMode || permissionError) { 
-          setAccounts(prev => prev.map(a => a.id === data.accountId ? {...a, balance: a.balance - data.amount} : a));
-          return; 
-      }
-      try {
-          const batch = writeBatch(db);
-          const trxRef = doc(collection(db, "transactions"));
-          batch.set(trxRef, {
-              id: trxRef.id,
-              date: new Date().toISOString(),
-              description: data.description,
-              amount: data.amount,
-              type: 'EXPENSE',
-              accountId: data.accountId,
-              category: data.category,
-              status: 'COMPLETED',
-              bookingId: data.bookingId
-          });
-          
-          const accRef = doc(db, "accounts", data.accountId);
-          batch.set(accRef, { balance: increment(-data.amount) }, { merge: true });
-          
-          await batch.commit();
-      } catch(e: any) { console.error(e); }
-  };
-
-  const handleSettleBooking = async (bookingId: string, amount: number, accountId: string) => {
-      if (isOfflineMode || permissionError) {
-          setBookings(prev => prev.map(b => b.id === bookingId ? { ...b, paidAmount: b.paidAmount + amount } : b));
-          setAccounts(prev => prev.map(a => a.id === accountId ? { ...a, balance: a.balance + amount } : a));
+  const handleAddBooking = async (newBooking: Booking, paymentDetails?: { amount: number, accountId: string }) => {
+      if (isOfflineMode) {
+          alert("Cannot add bookings in offline mode.");
           return;
       }
+      
+      const batch = writeBatch(db);
+      
+      // 1. Create Booking with Owner ID
+      const bookingRef = doc(db, "bookings", newBooking.id);
+      batch.set(bookingRef, { ...newBooking, ownerId: currentUser.id });
 
-      try {
-          const batch = writeBatch(db);
-          
-          // 1. Update Booking Paid Amount
-          const bookingRef = doc(db, "bookings", bookingId);
-          batch.update(bookingRef, { paidAmount: increment(amount) });
+      // 2. Handle Payment (Atomic)
+      if (paymentDetails && paymentDetails.amount > 0 && paymentDetails.accountId) {
+          // Update Account Balance
+          const accountRef = doc(db, "accounts", paymentDetails.accountId);
+          // Check if account exists first to avoid "No document to update" error
+          // Using set with merge: true simulates an update or create
+          batch.set(accountRef, { 
+              balance: increment(paymentDetails.amount),
+              ownerId: currentUser.id // Ensure ownerId is set if creating
+          }, { merge: true });
 
-          // 2. Update Account Balance
-          const accountRef = doc(db, "accounts", accountId);
-          batch.set(accountRef, { balance: increment(amount) }, { merge: true });
-
-          // 3. Create Transaction Record
-          const trxRef = doc(collection(db, "transactions"));
-          const newTrx: Transaction = {
-              id: trxRef.id,
+          // Create Transaction Record
+          const transactionRef = doc(db, "transactions", `t-${Date.now()}`);
+          const transaction: Transaction = {
+              id: transactionRef.id,
               date: new Date().toISOString(),
-              description: amount > 0 ? 'Booking Settlement' : 'Refund/Correction',
-              amount: Math.abs(amount),
-              type: amount > 0 ? 'INCOME' : 'EXPENSE',
-              accountId: accountId,
+              description: `Booking Deposit - ${newBooking.clientName}`,
+              amount: paymentDetails.amount,
+              type: 'INCOME',
+              accountId: paymentDetails.accountId,
               category: 'Sales / Booking',
               status: 'COMPLETED',
-              bookingId: bookingId
+              bookingId: newBooking.id,
+              ownerId: currentUser.id // Tag with owner
           };
-          batch.set(trxRef, newTrx);
-
-          await batch.commit();
-      } catch (e: any) {
-          console.error("Settlement Error:", e);
-          if (e.code === 'permission-denied') setPermissionError(true);
+          batch.set(transactionRef, transaction);
       }
+
+      try {
+          await batch.commit();
+          setNotifications(prev => [{id: `n-${Date.now()}`, title: 'Booking Created', message: `New session for ${newBooking.clientName}`, time: 'Just now', read: false, type: 'SUCCESS'}, ...prev]);
+      } catch (e) {
+          console.error("Error adding booking:", e);
+          alert("Failed to save booking. Please check your connection.");
+      }
+  };
+
+  const handleAddClient = async (newClient: Client) => {
+      try {
+          await setDoc(doc(db, "clients", newClient.id), { ...newClient, ownerId: currentUser.id });
+      } catch (e) {
+          console.error("Error adding client:", e);
+      }
+  };
+
+  const handleAddAsset = async (newAsset: Asset) => {
+      try {
+          await setDoc(doc(db, "assets", newAsset.id), { ...newAsset, ownerId: currentUser.id });
+      } catch (e) {
+          console.error("Error adding asset:", e);
+      }
+  };
+
+  const handleAddTransaction = async (newTransactionData: { description: string; amount: number; category: string; accountId: string; bookingId?: string }) => {
+      const batch = writeBatch(db);
+      
+      // 1. Create Transaction
+      const tId = `t-${Date.now()}`;
+      const tRef = doc(db, "transactions", tId);
+      const newTransaction: Transaction = {
+          id: tId,
+          date: new Date().toISOString(),
+          description: newTransactionData.description,
+          amount: newTransactionData.amount,
+          type: 'EXPENSE',
+          accountId: newTransactionData.accountId,
+          category: newTransactionData.category,
+          status: 'COMPLETED',
+          bookingId: newTransactionData.bookingId,
+          ownerId: currentUser.id
+      };
+      batch.set(tRef, newTransaction);
+
+      // 2. Deduct from Account
+      const accRef = doc(db, "accounts", newTransactionData.accountId);
+      batch.set(accRef, { 
+          balance: increment(-newTransactionData.amount) 
+      }, { merge: true });
+
+      await batch.commit();
   };
 
   const handleUpdateConfig = async (newConfig: StudioConfig) => {
       setConfig(newConfig);
-      if(isOfflineMode || permissionError) return;
-      try { 
-          await setDoc(doc(db, "studio", "config"), newConfig); 
-      } catch(e: any) { 
-          console.error(e);
-          alert(`Failed to save changes: ${e.message}`);
+      if (!isOfflineMode) {
+          try {
+              await setDoc(doc(db, "studios", currentUser.id), { ...newConfig, ownerId: currentUser.id });
+          } catch (e: any) {
+              console.error("Config Update Error:", e);
+              alert("Failed to save settings. " + e.message);
+          }
       }
   };
 
-  const handleLogout = () => {
-      signOut(auth);
+  const handleUpdateBooking = async (updatedBooking: Booking) => {
+      // Optimistic Update
+      setBookings(prev => prev.map(b => b.id === updatedBooking.id ? updatedBooking : b));
+      
+      if (!isOfflineMode) {
+          try {
+              await updateDoc(doc(db, "bookings", updatedBooking.id), updatedBooking as any);
+          } catch (e) {
+              console.error("Error updating booking:", e);
+          }
+      }
+  };
+
+  // Generic Delete Handler with Optimistic UI
+  const createDeleteHandler = (collectionName: string, stateSetter: React.Dispatch<React.SetStateAction<any[]>>) => {
+      return async (id: string) => {
+          // 1. Optimistic UI Update (Remove immediately)
+          stateSetter(prev => prev.filter(item => item.id !== id));
+
+          // 2. Database Delete
+          if (!isOfflineMode) {
+              try {
+                  await deleteDoc(doc(db, collectionName, id));
+              } catch (e: any) {
+                  console.error(`Error deleting from ${collectionName}:`, e);
+                  // Rollback handled by onSnapshot usually, but we can alert
+                  alert(`Failed to delete from server: ${e.message}`);
+              }
+          }
+      };
+  };
+
+  const handleDeleteBooking = createDeleteHandler("bookings", setBookings);
+  const handleDeleteClient = createDeleteHandler("clients", setClients);
+  const handleDeleteAsset = createDeleteHandler("assets", setAssets);
+  const handleDeleteTransaction = createDeleteHandler("transactions", setTransactions);
+  const handleDeletePackage = createDeleteHandler("packages", setPackages);
+  const handleDeleteUser = createDeleteHandler("users", setUsers);
+
+  // Update Generic
+  const handleUpdateClient = async (client: Client) => {
+      if(!isOfflineMode) await updateDoc(doc(db, "clients", client.id), client as any);
+  };
+  const handleUpdateAsset = async (asset: Asset) => {
+      if(!isOfflineMode) await updateDoc(doc(db, "assets", asset.id), asset as any);
+  };
+  const handleUpdatePackage = async (pkg: Package) => {
+      if(!isOfflineMode) await updateDoc(doc(db, "packages", pkg.id), pkg as any);
+  };
+  const handleAddPackage = async (pkg: Package) => {
+      if(!isOfflineMode) await setDoc(doc(db, "packages", pkg.id), { ...pkg, ownerId: currentUser.id });
+  };
+  
+  const handleSettleBooking = async (bookingId: string, amount: number, accountId: string) => {
+      const batch = writeBatch(db);
+      
+      // 1. Update Booking
+      const bookingRef = doc(db, "bookings", bookingId);
+      batch.update(bookingRef, { 
+          paidAmount: increment(amount),
+          status: amount > 0 ? 'COMPLETED' : 'BOOKED' // Auto-complete if paid? Optional logic
+      });
+
+      // 2. Update Account
+      const accountRef = doc(db, "accounts", accountId);
+      batch.set(accountRef, { balance: increment(amount) }, { merge: true });
+
+      // 3. Create Transaction
+      const tId = `t-${Date.now()}`;
+      const tRef = doc(db, "transactions", tId);
+      batch.set(tRef, {
+          id: tId,
+          date: new Date().toISOString(),
+          description: `Settlement for Booking #${bookingId.substring(0,4)}`,
+          amount: amount,
+          type: amount >= 0 ? 'INCOME' : 'EXPENSE', // Negative amount = Refund
+          accountId: accountId,
+          category: 'Sales / Settlement',
+          status: 'COMPLETED',
+          bookingId: bookingId,
+          ownerId: currentUser.id
+      });
+
+      await batch.commit();
+  };
+
+  const handleLogout = async () => {
+      await signOut(auth);
       setIsLoggedIn(false);
-      setHasSeenLanding(false);
+      setAuthView('LOGIN');
+      // Clear state to prevent data leak on re-login
+      setBookings([]);
+      setClients([]);
+      setAssets([]);
+      setTransactions([]);
   };
 
-  const handleToggleTheme = () => {
-      setIsDarkMode(!isDarkMode);
-      localStorage.setItem('lumina_theme', !isDarkMode ? 'dark' : 'light');
+  // Theme Toggle
+  const toggleTheme = () => {
+      const newTheme = !isDarkMode;
+      setIsDarkMode(newTheme);
+      localStorage.setItem('lumina_theme', newTheme ? 'dark' : 'light');
+      if (newTheme) {
+          document.documentElement.classList.remove('light-mode');
+      } else {
+          document.documentElement.classList.add('light-mode');
+      }
   };
+  
+  // Initial Theme Apply
+  useEffect(() => {
+      if (!isDarkMode) document.documentElement.classList.add('light-mode');
+  }, []);
 
-  if (!isLoggedIn && !hasSeenLanding) {
-      return <LandingPageView onGetStarted={() => setHasSeenLanding(true)} />;
+  // --- RENDER ---
+
+  if (!isLoggedIn) {
+      return authView === 'LOGIN' 
+        ? <LoginView users={USERS} onLogin={() => {}} onRegisterLink={() => setAuthView('REGISTER')} />
+        : <RegisterView onLoginLink={() => setAuthView('LOGIN')} onRegisterSuccess={(u) => { setCurrentUser(u); setIsLoggedIn(true); }} />;
   }
 
-  if (!isLoggedIn && hasSeenLanding) {
-      return (
-        <AnimatePresence mode="wait">
-            {authView === 'LOGIN' ? (
-                <LoginView 
-                    key="login"
-                    users={users} 
-                    onLogin={() => {}} // Handled by auth listener
-                    onRegisterLink={() => setAuthView('REGISTER')}
-                />
-            ) : (
-                <RegisterView 
-                    key="register"
-                    onLoginLink={() => setAuthView('LOGIN')} 
-                    onRegisterSuccess={(u) => {
-                        // Handled by auth listener
-                    }}
-                />
-            )}
-        </AnimatePresence>
-      );
+  if (appMode === 'LAUNCHER' && !hasSeenLanding) {
+      return <LandingPageView onGetStarted={() => setHasSeenLanding(true)} />;
   }
 
   if (appMode === 'LAUNCHER') {
@@ -570,243 +577,190 @@ const App: React.FC = () => {
             packages={packages}
             users={users}
             bookings={bookings}
-            onUpdateConfig={handleUpdateConfig}
+            onUpdateConfig={handleUpdateConfig} 
             onExit={() => setAppMode('LAUNCHER')}
             onPublicBooking={(data) => {
-                alert("Booking request simulation received: " + JSON.stringify(data));
+                alert("Booking received! In a real app, this would save to Firestore.");
             }}
         />
       );
   }
 
   return (
-    <div className={!isDarkMode ? 'light-mode' : ''}>
-        {/* Permission Help Modal */}
-        {permissionError && <PermissionErrorHelp onClose={() => setPermissionError(false)} />}
+    <div className="flex h-screen bg-lumina-base text-lumina-text font-sans overflow-hidden transition-colors duration-300">
+      {permissionError && <PermissionErrorHelp onClose={checkConnection} />}
+      
+      {/* Sidebar */}
+      <Sidebar 
+        currentUser={currentUser} 
+        currentView={currentView} 
+        onNavigate={setCurrentView} 
+        onLogout={handleLogout}
+        onSwitchApp={() => setAppMode('LAUNCHER')}
+        isDarkMode={isDarkMode}
+        onToggleTheme={toggleTheme}
+      />
 
-        <div className="flex h-screen bg-lumina-base text-lumina-text font-sans overflow-hidden transition-colors duration-300">
-        <Sidebar 
-            currentUser={currentUser} 
-            onNavigate={setCurrentView} 
-            currentView={currentView} 
-            onLogout={handleLogout}
-            onSwitchApp={() => setAppMode('LAUNCHER')}
-            isDarkMode={isDarkMode}
-            onToggleTheme={handleToggleTheme}
-        />
+      {/* Main Content */}
+      <main className="flex-1 ml-0 lg:ml-64 p-4 lg:p-8 overflow-hidden flex flex-col relative h-screen">
         
-        <main className="flex-1 flex flex-col h-full ml-20 lg:ml-64 relative overflow-hidden transition-all duration-300">
-            <div className="flex-1 overflow-y-auto p-4 lg:p-8 custom-scrollbar">
-            <div className="max-w-[1600px] mx-auto h-full">
-                <AnimatePresence mode="wait">
+        {/* Offline Indicator */}
+        {isOfflineMode && (
+            <div className="absolute top-0 left-0 right-0 bg-amber-500/90 text-black text-xs font-bold text-center py-1 z-50 flex items-center justify-center gap-2">
+                <WifiOff size={12} /> OFFLINE MODE - Changes saved locally
+                <button onClick={checkConnection} className="underline ml-2">Retry</button>
+            </div>
+        )}
+
+        {/* Top Bar (Mobile Menu Trigger could go here) */}
+        <div className="flex justify-between items-center mb-6 lg:hidden">
+             <div className="font-display font-bold text-xl">LUMINA</div>
+             {/* Mobile menu toggle would go here */}
+        </div>
+
+        <div className="flex-1 overflow-hidden relative h-full">
+            <AnimatePresence mode="wait">
+                <Motion.div 
+                    key={currentView}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    exit={{ opacity: 0, y: -10 }}
+                    transition={{ duration: 0.2 }}
+                    className="h-full"
+                >
                     {currentView === 'dashboard' && (
-                        <Motion.div key="dashboard" initial={{opacity:0, y:10}} animate={{opacity:1, y:0}} exit={{opacity:0, y:-10}}>
-                            <DashboardView 
-                                user={currentUser} 
-                                bookings={bookings} 
-                                transactions={transactions}
-                                onSelectBooking={setSelectedBookingId} 
-                                selectedDate={viewDate} 
-                                onNavigate={setCurrentView}
-                                config={config}
-                            />
-                        </Motion.div>
+                        <DashboardView 
+                            user={currentUser} 
+                            bookings={bookings} 
+                            transactions={transactions}
+                            onSelectBooking={(id) => { setSelectedBookingId(id); setIsCommandPaletteOpen(false); }}
+                            selectedDate={viewDate}
+                            onNavigate={setCurrentView}
+                            config={config}
+                        />
                     )}
                     {currentView === 'calendar' && (
-                        <Motion.div key="calendar" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="h-full">
-                            <CalendarView 
-                                bookings={bookings} 
-                                currentDate={viewDate} 
-                                users={users}
-                                rooms={config.rooms}
-                                onDateChange={setViewDate} 
-                                onNewBooking={(prefill) => { setBookingPrefill(prefill); setIsNewBookingOpen(true); }}
-                                onSelectBooking={setSelectedBookingId}
-                            />
-                        </Motion.div>
+                        <CalendarView 
+                            bookings={bookings} 
+                            currentDate={viewDate}
+                            users={activePhotographers}
+                            rooms={config.rooms}
+                            onDateChange={setViewDate}
+                            onNewBooking={(prefill) => { setBookingPrefill(prefill); setIsNewBookingOpen(true); }}
+                            onSelectBooking={setSelectedBookingId}
+                        />
                     )}
                     {currentView === 'production' && (
-                        <Motion.div key="production" initial={{opacity:0, x:20}} animate={{opacity:1, x:0}} exit={{opacity:0, x:-20}}>
-                            <ProductionView 
-                                bookings={bookings} 
-                                onSelectBooking={setSelectedBookingId} 
-                                currentUser={currentUser}
-                                onUpdateBooking={handleUpdateBooking}
-                                config={config}
-                            />
-                        </Motion.div>
+                        <ProductionView 
+                            bookings={bookings} 
+                            onSelectBooking={setSelectedBookingId}
+                            currentUser={currentUser}
+                            onUpdateBooking={handleUpdateBooking}
+                            config={config}
+                        />
                     )}
                     {currentView === 'inventory' && (
-                        <Motion.div key="inventory" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="h-full">
-                            <InventoryView 
-                                assets={assets} 
-                                users={users}
-                                onAddAsset={handleAddAsset}
-                                onUpdateAsset={handleUpdateAsset}
-                                onDeleteAsset={handleDeleteAsset}
-                            />
-                        </Motion.div>
-                    )}
-                    {currentView === 'clients' && (
-                        <Motion.div key="clients" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="h-full">
-                            <ClientsView 
-                                clients={clients} 
-                                bookings={bookings} 
-                                config={config}
-                                onAddClient={handleAddClient}
-                                onUpdateClient={handleUpdateClient}
-                                onDeleteClient={handleDeleteClient}
-                                onSelectBooking={setSelectedBookingId}
-                            />
-                        </Motion.div>
-                    )}
-                    {currentView === 'team' && (
-                        <Motion.div key="team" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-                            <TeamView 
-                                users={users}
-                                bookings={bookings}
-                                onAddUser={(u) => {
-                                    if(isOfflineMode || permissionError) { setUsers(prev => [...prev, u]); return; }
-                                    setDoc(doc(db, "users", u.id), {
-                                        uid: u.id, name: u.name, role: u.role, email: u.email, phone: u.phone, status: u.status, createdAt: u.joinedDate, unavailableDates: u.unavailableDates, avatar: u.avatar, specialization: u.specialization
-                                    });
-                                }}
-                                onUpdateUser={(u) => {
-                                    if(isOfflineMode || permissionError) { setUsers(prev => prev.map(x => x.id === u.id ? u : x)); return; }
-                                    updateDoc(doc(db, "users", u.id), {
-                                        name: u.name, role: u.role, email: u.email, phone: u.phone, status: u.status, unavailableDates: u.unavailableDates, avatar: u.avatar, specialization: u.specialization
-                                    }).catch(e => console.warn("Offline update", e));
-                                }}
-                                onDeleteUser={async (id) => {
-                                    // Optimistic
-                                    const original = [...users];
-                                    setUsers(prev => prev.filter(x => x.id !== id));
-                                    if(isOfflineMode || permissionError) return;
-                                    try {
-                                        await deleteDoc(doc(db, "users", id));
-                                    } catch (e: any) {
-                                        console.error(e);
-                                        alert(`Failed to delete user: ${e.message}`);
-                                        setUsers(original);
-                                    }
-                                }}
-                            />
-                        </Motion.div>
+                        <InventoryView 
+                            assets={assets} 
+                            users={activePhotographers}
+                            onAddAsset={handleAddAsset}
+                            onUpdateAsset={handleUpdateAsset}
+                            onDeleteAsset={handleDeleteAsset}
+                        />
                     )}
                     {currentView === 'finance' && (
-                        <Motion.div key="finance" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} className="h-full">
-                            <FinanceView 
-                                accounts={accounts}
-                                metrics={[]} // Calculated internally now
-                                bookings={bookings}
-                                users={users}
-                                transactions={transactions}
-                                config={config}
-                                onTransfer={handleTransfer}
-                                onRecordExpense={handleRecordExpense}
-                                onSettleBooking={handleSettleBooking}
-                                onDeleteTransaction={async (id) => {
-                                    const tx = transactions.find(t => t.id === id);
-                                    if (!tx) return;
-
-                                    // Optimistic
-                                    const originalTx = [...transactions];
-                                    const originalAcc = [...accounts];
-                                    
-                                    setTransactions(prev => prev.filter(t => t.id !== id));
-                                    // Revert balance effect locally
-                                    const reversal = tx.type === 'INCOME' ? -tx.amount : tx.amount;
-                                    setAccounts(prev => prev.map(a => a.id === tx.accountId ? {...a, balance: a.balance + reversal} : a));
-
-                                    if(isOfflineMode || permissionError) return;
-
-                                    try {
-                                        const batch = writeBatch(db);
-                                        const accRef = doc(db, "accounts", tx.accountId);
-                                        batch.update(accRef, { balance: increment(reversal) });
-                                        batch.delete(doc(db, "transactions", id));
-                                        await batch.commit();
-                                    } catch(e: any) {
-                                        console.error(e);
-                                        alert("Failed to delete transaction. Rolling back.");
-                                        setTransactions(originalTx);
-                                        setAccounts(originalAcc);
-                                    }
-                                }}
-                            />
-                        </Motion.div>
+                        <FinanceView 
+                            accounts={accounts}
+                            metrics={[]} // Metrics calculated inside view or passed prop
+                            bookings={bookings}
+                            users={activePhotographers}
+                            transactions={transactions}
+                            config={config}
+                            onTransfer={(from, to, amt) => {
+                                // Implement transfer logic similar to Add Transaction
+                                const batch = writeBatch(db);
+                                batch.set(doc(db, "accounts", from), { balance: increment(-amt) }, { merge: true });
+                                batch.set(doc(db, "accounts", to), { balance: increment(amt) }, { merge: true });
+                                batch.set(doc(db, "transactions", `t-${Date.now()}`), {
+                                    id: `t-${Date.now()}`,
+                                    date: new Date().toISOString(),
+                                    description: 'Internal Transfer',
+                                    amount: amt,
+                                    type: 'TRANSFER',
+                                    accountId: from,
+                                    relatedAccountId: to,
+                                    category: 'Transfer',
+                                    status: 'COMPLETED',
+                                    ownerId: currentUser.id
+                                });
+                                batch.commit();
+                            }}
+                            onRecordExpense={handleAddTransaction}
+                            onSettleBooking={handleSettleBooking}
+                            onDeleteTransaction={handleDeleteTransaction}
+                        />
                     )}
-                    {currentView === 'analytics' && (
-                        <Motion.div key="analytics" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-                            <AnalyticsView 
-                                bookings={bookings}
-                                packages={packages}
-                                transactions={transactions}
-                            />
-                        </Motion.div>
+                    {currentView === 'clients' && (
+                        <ClientsView 
+                            clients={clients}
+                            bookings={bookings}
+                            config={config}
+                            onAddClient={handleAddClient}
+                            onUpdateClient={handleUpdateClient}
+                            onDeleteClient={handleDeleteClient}
+                            onSelectBooking={setSelectedBookingId}
+                        />
+                    )}
+                    {currentView === 'team' && (
+                        <TeamView 
+                            users={activePhotographers}
+                            bookings={bookings}
+                            onAddUser={(u) => {
+                                // In this SaaS version, adding a user essentially creates a dummy profile for assignment
+                                // Real multi-user SaaS would require invites. 
+                                // For now we store "staff" in a subcollection or just the users collection if allowed
+                                setDoc(doc(db, "users", u.id), { ...u, ownerId: currentUser.id }); 
+                            }}
+                            onUpdateUser={(u) => updateDoc(doc(db, "users", u.id), u as any)}
+                            onDeleteUser={handleDeleteUser}
+                        />
                     )}
                     {currentView === 'settings' && (
-                        <Motion.div key="settings" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}}>
-                            <SettingsView 
-                                packages={packages}
-                                config={config}
-                                bookings={bookings}
-                                currentUser={currentUser}
-                                onAddPackage={async (p) => {
-                                    if(isOfflineMode || permissionError) { setPackages(prev => [...prev, p]); return; }
-                                    await setDoc(doc(db, "packages", p.id), p);
-                                }}
-                                onUpdatePackage={async (p) => {
-                                    if(isOfflineMode || permissionError) { setPackages(prev => prev.map(x => x.id === p.id ? p : x)); return; }
-                                    await setDoc(doc(db, "packages", p.id), p);
-                                }}
-                                onDeletePackage={async (id) => {
-                                    console.log("Deleting package:", id);
-                                    const original = [...packages];
-                                    setPackages(prev => prev.filter(x => x.id !== id));
-                                    if(isOfflineMode || permissionError) return;
-                                    try { await deleteDoc(doc(db, "packages", id)); } 
-                                    catch(e: any) { 
-                                        console.error(e); 
-                                        alert(`Failed to delete package: ${e.message}`);
-                                        setPackages(original);
-                                    }
-                                }}
-                                onUpdateConfig={handleUpdateConfig}
-                                onUpdateUserProfile={async (updatedUser) => {
-                                    // Update local first
-                                    setCurrentUser(prev => ({ ...prev, ...updatedUser }));
-                                    // Update DB
-                                    if (!isOfflineMode && !permissionError) {
-                                        const userRef = doc(db, "users", currentUser.id);
-                                        await updateDoc(userRef, {
-                                            name: updatedUser.name,
-                                            phone: updatedUser.phone,
-                                            avatar: updatedUser.avatar,
-                                            specialization: updatedUser.specialization
-                                        });
-                                    }
-                                }}
-                                onDeleteAccount={async () => {
-                                    if (window.confirm("DANGER: Are you sure you want to delete your account? This is irreversible.")) {
-                                        // Delete user doc
-                                        await deleteDoc(doc(db, "users", currentUser.id));
-                                        // Sign out
-                                        await signOut(auth);
-                                        // window.location.reload();
-                                    }
-                                }}
-                            />
-                        </Motion.div>
+                        <SettingsView 
+                            packages={packages}
+                            config={config}
+                            onAddPackage={handleAddPackage}
+                            onUpdatePackage={handleUpdatePackage}
+                            onDeletePackage={handleDeletePackage}
+                            onUpdateConfig={handleUpdateConfig}
+                            bookings={bookings}
+                            currentUser={currentUser}
+                            onUpdateUserProfile={async (u) => {
+                                await updateDoc(doc(db, "users", u.id), u as any);
+                                setCurrentUser(prev => ({ ...prev, ...u }));
+                            }}
+                            onDeleteAccount={async () => {
+                                if(window.confirm("WARNING: This will delete your account and ALL data permanently. Are you sure?")) {
+                                    // In a real app, use a Cloud Function for recursive delete
+                                    alert("Account deletion request sent. (Simulation)");
+                                }
+                            }}
+                        />
                     )}
-                </AnimatePresence>
-            </div>
-            </div>
-        </main>
+                    {currentView === 'analytics' && (
+                        <AnalyticsView 
+                            bookings={bookings}
+                            packages={packages}
+                            transactions={transactions}
+                        />
+                    )}
+                </Motion.div>
+            </AnimatePresence>
+        </div>
 
-        {/* Global Modals */}
+        {/* Modals */}
         <NewBookingModal 
-            isOpen={isNewBookingOpen}
+            isOpen={isNewBookingOpen} 
             onClose={() => { setIsNewBookingOpen(false); setBookingPrefill(undefined); }}
             photographers={activePhotographers}
             accounts={accounts}
@@ -822,7 +776,7 @@ const App: React.FC = () => {
             isOpen={!!selectedBookingId}
             onClose={() => setSelectedBookingId(null)}
             booking={selectedBooking}
-            photographer={users.find(u => u.id === selectedBooking?.photographerId)}
+            photographer={activePhotographers.find(p => p.id === selectedBooking?.photographerId)}
             onUpdateBooking={handleUpdateBooking}
             onDeleteBooking={handleDeleteBooking}
             bookings={bookings}
@@ -830,14 +784,14 @@ const App: React.FC = () => {
             packages={packages}
             currentUser={currentUser}
             assets={assets}
-            users={users}
+            users={activePhotographers}
             transactions={transactions}
-            onAddTransaction={handleRecordExpense}
+            onAddTransaction={handleAddTransaction}
             accounts={accounts}
         />
 
         <CommandPalette 
-            isOpen={isCommandPaletteOpen}
+            isOpen={isCommandPaletteOpen} 
             onClose={() => setIsCommandPaletteOpen(false)}
             onNavigate={setCurrentView}
             clients={clients}
@@ -847,9 +801,26 @@ const App: React.FC = () => {
             currentUser={currentUser}
         />
 
-        </div>
+        {/* Global FAB for Quick Actions */}
+        <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={() => setIsNewBookingOpen(true)}
+            className="fixed bottom-8 right-8 w-14 h-14 bg-lumina-accent text-lumina-base rounded-full shadow-2xl flex items-center justify-center z-40 hover:shadow-lumina-accent/50 border-2 border-white/20"
+        >
+            <Plus size={28} />
+        </motion.button>
+
+      </main>
     </div>
   );
 };
+
+const Plus = ({ size }: { size: number }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"></line>
+        <line x1="5" y1="12" x2="19" y2="12"></line>
+    </svg>
+);
 
 export default App;

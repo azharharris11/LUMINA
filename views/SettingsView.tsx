@@ -420,7 +420,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                                             onClick={(e) => handleDeletePackage(e, pkg)} 
                                             className="py-2 px-3 text-sm font-bold text-lumina-muted hover:text-rose-500 bg-lumina-base border border-lumina-highlight rounded-lg flex items-center justify-center transition-colors cursor-pointer z-10"
                                         >
-                                            <Trash2 size={14} />
+                                            <Trash2 size={14} className="pointer-events-none" />
                                         </button>
                                     </div>
                                 </div>
@@ -457,7 +457,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                                         onClick={(e) => handleDeleteRoom(e, room.id, room.name)} 
                                         className="p-2 text-lumina-muted hover:text-rose-500 transition-colors cursor-pointer z-10"
                                      >
-                                         <Trash2 size={16} />
+                                         <Trash2 size={16} className="pointer-events-none" />
                                      </button>
                                  </div>
                              ))}

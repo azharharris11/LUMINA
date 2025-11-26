@@ -1,4 +1,5 @@
 
+
 export type Role = 'OWNER' | 'ADMIN' | 'PHOTOGRAPHER' | 'EDITOR' | 'FINANCE';
 
 export interface User {
@@ -13,6 +14,7 @@ export interface User {
   commissionRate?: number; 
   joinedDate: string; 
   unavailableDates?: string[]; // New: Rostering / Blocked Dates
+  ownerId?: string;
 }
 
 // ... (Keep all existing interfaces exactly as they are until SidebarProps) ...
@@ -25,6 +27,7 @@ export interface Account {
   type: AccountType;
   balance: number;
   accountNumber?: string;
+  ownerId?: string;
 }
 
 export type ProjectStatus = 'INQUIRY' | 'BOOKED' | 'SHOOTING' | 'CULLING' | 'EDITING' | 'REVIEW' | 'COMPLETED' | 'CANCELLED';
@@ -126,6 +129,7 @@ export interface Booking {
   timeLogs?: TimeLog[];
   
   costSnapshot?: PackageCostItem[];
+  ownerId?: string;
 }
 
 export interface Transaction {
@@ -139,6 +143,7 @@ export interface Transaction {
   category: string; 
   status: 'COMPLETED' | 'PENDING';
   bookingId?: string; 
+  ownerId?: string;
 }
 
 export interface MonthlyMetric {
@@ -161,6 +166,7 @@ export interface Asset {
   returnDate?: string;
   notes?: string; 
   lastUpdated?: string;
+  ownerId?: string;
 }
 
 export interface Package {
@@ -171,6 +177,7 @@ export interface Package {
   features: string[];
   active: boolean;
   costBreakdown: PackageCostItem[]; 
+  ownerId?: string;
 }
 
 export interface Client {
@@ -182,6 +189,7 @@ export interface Client {
   category: 'VIP' | 'REGULAR' | 'NEW' | 'PROBLEMATIC';
   notes: string; 
   joinedDate: string;
+  ownerId?: string;
 }
 
 export interface Notification {
@@ -330,6 +338,7 @@ export interface StudioConfig {
   rooms: StudioRoom[];
   templates: WhatsAppTemplates;
   site: SiteConfig;
+  ownerId?: string;
 }
 
 export interface PublicBookingSubmission {
