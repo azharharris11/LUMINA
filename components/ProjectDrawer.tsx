@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Booking, ProjectStatus, User, BookingFile, StudioConfig, Package, BookingItem, BookingTask, ActivityLog, Asset, BookingComment, Discount, TimeLog, Transaction, Account } from '../types';
-import { X, Image as ImageIcon, FileSignature, Clock, CheckCircle2, Circle, Upload, PenTool, Download, Calendar, Save, Trash2, Edit, Plus, Loader2, FileText, ExternalLink, Paperclip, Check, Send, RefreshCw, AlertCircle, Lock, Timer, ListChecks, History, DollarSign, User as UserIcon, MapPin, Briefcase, Camera, Box, Wrench, AlertTriangle, TrendingUp, Tag, MessageSquare, Play, Square, Pause, PieChart, MinusCircle, ChevronRight, HardDrive, LayoutDashboard, FolderOpen, Palette, ArrowLeft, Folder, MoreVertical, FolderPlus, Eye, MessageCircle, Copy } from 'lucide-react';
+import { X, Image as ImageIcon, FileSignature, Clock, CheckCircle2, Circle, Upload, PenTool, Download, Calendar, Save, Trash2, Edit, Plus, Loader2, FileText, ExternalLink, Paperclip, Check, Send, RefreshCw, AlertCircle, Lock, Timer, ListChecks, History, DollarSign, User as UserIcon, MapPin, Briefcase, Camera, Box, Wrench, AlertTriangle, TrendingUp, Tag, MessageSquare, Play, Square, Pause, PieChart, MinusCircle, ChevronRight, HardDrive, LayoutDashboard, FolderOpen, Palette, ArrowLeft, Folder, MoreVertical, FolderPlus, Eye, MessageCircle, Copy, RefreshCcw } from 'lucide-react';
 import WhatsAppModal from './WhatsAppModal'; 
 
 interface ProjectDrawerProps {
@@ -31,6 +32,14 @@ const Motion = motion as any;
 interface DriveFolder {
     id: string;
     name: string;
+}
+
+interface DriveFile {
+    id: string;
+    name: string;
+    thumbnailLink: string;
+    webViewLink: string;
+    mimeType: string;
 }
 
 const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking, photographer, onUpdateBooking, onDeleteBooking, bookings = [], config, packages = [], currentUser, assets = [], users = [], transactions = [], onAddTransaction, accounts = [], googleToken, onLogActivity }) => {
@@ -65,6 +74,10 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   
   const currentDriveFolderId = driveBreadcrumbs[driveBreadcrumbs.length - 1].id;
+
+  // Proofing State
+  const [proofingFiles, setProofingFiles] = useState<DriveFile[]>([]);
+  const [isLoadingProofing, setIsLoadingProofing] = useState(false);
 
   const [newLineItem, setNewLineItem] = useState<Partial<BookingItem>>({ description: '', quantity: 1, unitPrice: 0, cost: 0 });
   const [editDiscount, setEditDiscount] = useState<Discount>({ type: 'FIXED', value: 0 });
@@ -127,6 +140,7 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       setShowNewFolderInput(false);
       setNewFolderName('');
       setActiveMenuId(null);
+      setProofingFiles([]);
     }
   }, [booking, isOpen]);
 
@@ -164,11 +178,50 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
       }
   };
 
+  // FETCH PROOFING IMAGES (Real Drive Integration)
+  const fetchProofingFiles = async () => {
+      if (!googleToken || !booking?.deliveryUrl) return;
+      
+      // Extract Folder ID
+      const match = booking.deliveryUrl.match(/\/folders\/([a-zA-Z0-9-_]+)/);
+      const folderId = match ? match[1] : null;
+      
+      if (!folderId) return;
+
+      setIsLoadingProofing(true);
+      try {
+          // Query for images in the folder
+          const query = `'${folderId}' in parents and mimeType contains 'image/' and trashed=false`;
+          const url = `https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}&fields=files(id,name,thumbnailLink,webViewLink,mimeType)&orderBy=createdTime desc`;
+          
+          const res = await fetch(url, {
+              headers: { 'Authorization': `Bearer ${googleToken}` }
+          });
+          
+          if (res.ok) {
+              const data = await res.json();
+              setProofingFiles(data.files || []);
+          }
+      } catch (e) {
+          console.error("Proofing Fetch Error:", e);
+      } finally {
+          setIsLoadingProofing(false);
+      }
+  };
+
   useEffect(() => {
       if(showDrivePicker) {
           fetchDriveFolders(currentDriveFolderId);
       }
   }, [showDrivePicker, currentDriveFolderId]);
+
+  useEffect(() => {
+      if (activeTab === 'PROOFING') {
+          if (googleToken && booking?.deliveryUrl) {
+              fetchProofingFiles();
+          }
+      }
+  }, [activeTab, googleToken, booking?.deliveryUrl]);
 
   const handleNavigateDrive = (folder: DriveFolder) => {
       setDriveBreadcrumbs(prev => [...prev, folder]);
@@ -315,6 +368,9 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
           if(booking && onLogActivity) {
               onLogActivity(booking.id, 'DRIVE_UPLOAD', `Uploaded ${file.name} to Drive`);
           }
+          
+          // Refresh proofing if active
+          if (activeTab === 'PROOFING') fetchProofingFiles();
           
           alert(`'${file.name}' uploaded successfully to the project folder!`);
           
@@ -774,33 +830,58 @@ const ProjectDrawer: React.FC<ProjectDrawerProps> = ({ isOpen, onClose, booking,
                 </div>
             )}
 
+            {/* PROOFING TAB */}
             {activeTab === 'PROOFING' && (
-                <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6">
+                <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6 min-h-[400px]">
                     <div className="flex justify-between items-center mb-6">
-                        <h3 className="font-bold text-white flex items-center gap-2"><Eye size={18} className="text-lumina-accent"/> Client Proofing Portal</h3>
-                        <div className="text-xs text-lumina-muted font-mono">0 Selected</div>
+                        <div>
+                            <h3 className="font-bold text-white flex items-center gap-2"><Eye size={18} className="text-lumina-accent"/> Client Proofing Portal</h3>
+                            <p className="text-xs text-lumina-muted mt-1">
+                                {proofingFiles.length > 0 ? `Displaying ${proofingFiles.length} images from connected Drive folder.` : 'No images found in linked folder.'}
+                            </p>
+                        </div>
+                        <button onClick={fetchProofingFiles} className="p-2 bg-lumina-highlight hover:bg-white hover:text-black rounded-lg transition-colors" title="Refresh">
+                            <RefreshCcw size={16} className={isLoadingProofing ? 'animate-spin' : ''} />
+                        </button>
                     </div>
                     
-                    <div className="p-8 text-center border border-dashed border-lumina-highlight rounded-xl bg-lumina-base/20 mb-6">
-                        <p className="text-sm text-lumina-muted mb-2">Client Selection View (Simulation)</p>
-                        <p className="text-xs text-lumina-muted/50">This is where clients would select their favorite photos.</p>
-                    </div>
-
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                        {[1,2,3,4].map(i => (
-                            <div key={i} className="aspect-square bg-lumina-base border border-lumina-highlight rounded-lg flex items-center justify-center relative group hover:border-lumina-accent transition-colors">
-                                <ImageIcon className="text-lumina-muted/20 w-8 h-8" />
-                                <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <button className="w-6 h-6 rounded-full bg-black/50 border border-white/20 flex items-center justify-center hover:bg-lumina-accent hover:text-black">
-                                        <Plus size={12} />
-                                    </button>
+                    {!booking?.deliveryUrl ? (
+                        <div className="p-10 text-center border border-dashed border-lumina-highlight rounded-xl bg-lumina-base/20">
+                            <HardDrive size={32} className="text-lumina-muted mx-auto mb-4"/>
+                            <p className="text-sm text-white font-bold mb-2">No Drive Folder Linked</p>
+                            <p className="text-xs text-lumina-muted mb-4">Connect a Google Drive folder in the 'Files & Delivery' tab to start proofing.</p>
+                            <button onClick={() => setActiveTab('TIMELINE')} className="text-xs text-lumina-accent hover:underline">Go to Files</button>
+                        </div>
+                    ) : isLoadingProofing ? (
+                        <div className="flex justify-center items-center h-40">
+                            <Loader2 className="w-8 h-8 text-lumina-accent animate-spin"/>
+                        </div>
+                    ) : proofingFiles.length === 0 ? (
+                        <div className="p-10 text-center border border-dashed border-lumina-highlight rounded-xl bg-lumina-base/20">
+                            <p className="text-sm text-lumina-muted">Folder is empty.</p>
+                            <p className="text-xs text-lumina-muted/50 mt-2">Upload images to the linked folder to see them here.</p>
+                        </div>
+                    ) : (
+                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                            {proofingFiles.map((file) => (
+                                <div key={file.id} className="aspect-square bg-lumina-base border border-lumina-highlight rounded-lg overflow-hidden relative group hover:border-lumina-accent transition-colors cursor-pointer">
+                                    {file.thumbnailLink ? (
+                                        <img src={file.thumbnailLink.replace('=s220', '=s400')} className="w-full h-full object-cover" loading="lazy" />
+                                    ) : (
+                                        <div className="w-full h-full flex items-center justify-center text-lumina-muted"><ImageIcon size={24}/></div>
+                                    )}
+                                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                                        <a href={file.webViewLink} target="_blank" className="p-2 bg-white text-black rounded-full hover:scale-110 transition-transform" title="View in Drive">
+                                            <ExternalLink size={14}/>
+                                        </a>
+                                    </div>
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black/70 p-1.5">
+                                        <p className="text-[10px] text-white truncate text-center">{file.name}</p>
+                                    </div>
                                 </div>
-                                <div className="absolute bottom-2 left-2 right-2 text-center">
-                                    <span className="text-[10px] bg-black/50 px-1 rounded text-white">IMG_00{i}.jpg</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
+                            ))}
+                        </div>
+                    )}
                 </div>
             )}
 
