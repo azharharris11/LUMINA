@@ -18,7 +18,7 @@ import AnalyticsView from './views/AnalyticsView';
 import SiteBuilderView from './views/SiteBuilderView';
 import LandingPageView from './views/LandingPageView';
 import PublicSiteView from './views/PublicSiteView'; 
-import OnboardingView from './views/OnboardingView'; // Import new view
+import OnboardingView from './views/OnboardingView';
 import NewBookingModal from './components/NewBookingModal';
 import CommandPalette from './components/CommandPalette';
 import ProjectDrawer from './components/ProjectDrawer';
@@ -45,7 +45,6 @@ const loadState = <T,>(key: string, fallback: T): T => {
 type AppMode = 'LAUNCHER' | 'OS' | 'SITE';
 type PublicView = 'LANDING' | 'LOGIN' | 'REGISTER';
 
-// ... PermissionErrorHelp component ...
 const PermissionErrorHelp = ({ onClose }: { onClose: () => void }) => (
   <div className="fixed inset-0 z-[200] bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
     <div className="bg-gray-900 border border-red-500 rounded-2xl p-8 max-w-3xl w-full shadow-2xl relative">
@@ -119,7 +118,6 @@ service cloud.firestore {
 );
 
 const App: React.FC = () => {
-  // ... existing state variables ...
   const [publicSiteId, setPublicSiteId] = useState<string | null>(null);
   const [publicSiteConfig, setPublicSiteConfig] = useState<StudioConfig | null>(null);
   const [publicPackages, setPublicPackages] = useState<Package[]>([]);
@@ -145,7 +143,6 @@ const App: React.FC = () => {
       return sessionStorage.getItem('lumina_google_token');
   });
 
-  // ... updateGoogleToken, states for viewDate, Modals etc ...
   const updateGoogleToken = (token: string | null) => {
       setGoogleToken(token);
       if (token) {
@@ -174,7 +171,6 @@ const App: React.FC = () => {
   const selectedBooking = bookings.find(b => b.id === selectedBookingId) || null;
   const activePhotographers = users.length > 0 ? users : [currentUser];
 
-  // ... useEffect for public site params ...
   useEffect(() => {
       const params = new URLSearchParams(window.location.search);
       const siteId = params.get('site');
@@ -186,7 +182,6 @@ const App: React.FC = () => {
       }
   }, []);
 
-  // ... fetchPublicSiteData ...
   const fetchPublicSiteData = async (siteId: string) => {
       setIsPublicLoading(true);
       setPublicError(null);
@@ -222,7 +217,6 @@ const App: React.FC = () => {
       }
   };
 
-  // ... handlePublicSiteBooking ...
   const handlePublicSiteBooking = async (data: PublicBookingSubmission, ownerOverride?: string) => {
       const targetOwnerId = ownerOverride || publicSiteId;
       
@@ -271,7 +265,6 @@ const App: React.FC = () => {
       }
   };
 
-  // ... useEffect keydown ...
   useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
           if (e.key === 'k' && (e.metaKey || e.ctrlKey)) {
@@ -283,7 +276,6 @@ const App: React.FC = () => {
       return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // ... checkConnection ...
   const checkConnection = async () => {
       try {
           const targetId = currentUser.studioId || currentUser.id;
@@ -313,7 +305,6 @@ const App: React.FC = () => {
                   if (userDocSnap.exists()) {
                       userData = userDocSnap.data();
                   } else {
-                      // Create basic profile if not exists
                       const newProfile = {
                           uid: firebaseUser.uid,
                           name: firebaseUser.displayName || 'Studio Owner',
@@ -325,7 +316,7 @@ const App: React.FC = () => {
                           status: 'ACTIVE',
                           studioName: 'My Studio',
                           ownerId: firebaseUser.uid,
-                          hasCompletedOnboarding: false // Default for new
+                          hasCompletedOnboarding: false 
                       };
                       try {
                         await setDoc(userDocRef, newProfile);
@@ -368,17 +359,15 @@ const App: React.FC = () => {
       return () => unsubscribe();
   }, [publicSiteId]);
 
-  // --- DATA LISTENERS EFFECT (bookings, clients, etc) ---
+  // --- DATA LISTENERS EFFECT ---
   useEffect(() => {
       if (!isLoggedIn || !currentUser.id) return;
       if (permissionError) return;
       if (publicSiteId) return;
       
-      // Don't fetch data if we are still onboarding to prevent noise
       if (!currentUser.hasCompletedOnboarding && currentUser.role === 'OWNER') return;
 
       if (isOfflineMode) {
-          // ... offline loading logic (read-only) ...
           setBookings(loadState('bookings', []));
           setClients(loadState('clients', []));
           setAssets(loadState('assets', []));
@@ -396,8 +385,7 @@ const App: React.FC = () => {
           if (err.code === 'permission-denied') setPermissionError(true);
       };
 
-      // --- REMOVED ALL LOCALSTORAGE.SETITEM CALLS TO PREVENT CIRCULAR JSON ERRORS ---
-
+      // IMPORTANT: NO LOCALSTORAGE CACHING HERE to prevent JSON circular errors
       const unsubConfig = onSnapshot(doc(db, "studios", activeStudioId), (snapshot) => {
           if (snapshot.exists()) {
               setConfig(snapshot.data() as StudioConfig);
@@ -477,8 +465,6 @@ const App: React.FC = () => {
       };
   }, [isLoggedIn, currentUser.id, isOfflineMode, permissionError, publicSiteId, currentUser.hasCompletedOnboarding]);
 
-  // ... remainder of App component logic (CRUD handlers, rendering) ...
-  
   // --- ONBOARDING HANDLER ---
   const handleCompleteOnboarding = async (data: { studioName: string, focus: string }) => {
       try {
@@ -521,12 +507,12 @@ const App: React.FC = () => {
 
   const handleAddClient = async (newClient: Client) => { try { await setDoc(doc(db, "clients", newClient.id), { ...newClient, ownerId: getActiveOwnerId() }); } catch (e) { console.error(e); } };
   const handleAddAsset = async (newAsset: Asset) => { try { await setDoc(doc(db, "assets", newAsset.id), { ...newAsset, ownerId: getActiveOwnerId() }); } catch (e) { console.error(e); } };
-  const handleAddTransaction = async (newTransactionData: { description: string; amount: number; category: string; accountId: string; bookingId?: string; submittedBy?: string }) => {
+  const handleAddTransaction = async (newTransactionData: { description: string; amount: number; category: string; accountId: string; bookingId?: string; submittedBy?: string; receiptUrl?: string; isRecurring?: boolean }) => {
       const batch = writeBatch(db);
       const ownerId = getActiveOwnerId();
       const tId = `t-${Date.now()}`;
       const tRef = doc(db, "transactions", tId);
-      const newTransaction: Transaction = { id: tId, date: new Date().toISOString(), description: newTransactionData.description, amount: newTransactionData.amount, type: 'EXPENSE', accountId: newTransactionData.accountId, category: newTransactionData.category, status: 'COMPLETED', bookingId: newTransactionData.bookingId, submittedBy: newTransactionData.submittedBy, ownerId };
+      const newTransaction: Transaction = { id: tId, date: new Date().toISOString(), description: newTransactionData.description, amount: newTransactionData.amount, type: 'EXPENSE', accountId: newTransactionData.accountId, category: newTransactionData.category, status: 'COMPLETED', bookingId: newTransactionData.bookingId, submittedBy: newTransactionData.submittedBy, ownerId, receiptUrl: newTransactionData.receiptUrl, isRecurring: newTransactionData.isRecurring };
       batch.set(tRef, newTransaction);
       const accRef = doc(db, "accounts", newTransactionData.accountId);
       batch.set(accRef, { balance: increment(-newTransactionData.amount) }, { merge: true });

@@ -1,8 +1,5 @@
 
-
-
-
-
+// ... existing imports ...
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { Package, StudioConfig, SettingsViewProps, StudioRoom, Booking, User, WorkflowAutomation, ProjectStatus, Asset } from '../types';
@@ -100,7 +97,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
       client.requestAccessToken();
   };
 
-  // ... (rest of the file remains exactly the same)
+  // ... (rest of the file handlers) ...
   const togglePackage = (pkg: Package) => {
     if(onUpdatePackage) {
         onUpdatePackage({ ...pkg, active: !pkg.active });
@@ -143,7 +140,6 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
       }));
   };
 
-  // Package Task Handlers
   const addPackageTask = () => {
       if (packageTaskInput.trim()) {
           setNewPackage(prev => ({
@@ -161,7 +157,6 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
       }));
   };
 
-  // Package Asset Bundling
   const togglePackageAsset = (assetId: string) => {
       setNewPackage(prev => {
           const current = prev.defaultAssetIds || [];
@@ -278,16 +273,28 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
           timestamp: new Date().toISOString()
       };
       
-      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToExport));
-      const downloadAnchorNode = document.createElement('a');
-      downloadAnchorNode.setAttribute("href", dataStr);
-      downloadAnchorNode.setAttribute("download", "lumina_backup.json");
-      document.body.appendChild(downloadAnchorNode);
-      downloadAnchorNode.click();
-      downloadAnchorNode.remove();
+      try {
+          // Sanitize output: prevent circular JSON errors (e.g. Firestore References)
+          const replacer = (key: string, value: any) => {
+              // Filter out internal Firestore properties or circular refs
+              if (key.startsWith('_')) return undefined;
+              if (value && typeof value === 'object' && value.firestore) return undefined; // Filter DocumentReferences
+              return value;
+          };
+
+          const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(dataToExport, replacer));
+          const downloadAnchorNode = document.createElement('a');
+          downloadAnchorNode.setAttribute("href", dataStr);
+          downloadAnchorNode.setAttribute("download", "lumina_backup.json");
+          document.body.appendChild(downloadAnchorNode);
+          downloadAnchorNode.click();
+          downloadAnchorNode.remove();
+      } catch (e) {
+          console.error("Export Failed:", e);
+          alert("Failed to export data. Check console for details.");
+      }
   };
 
-  // Automation Handlers
   const handleAddTaskToAutomation = () => {
       if(taskInput.trim()) {
           setNewAutomation(prev => ({ ...prev, tasks: [...(prev.tasks || []), taskInput.trim()] }));
@@ -325,6 +332,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
 
   return (
     <div className="space-y-8 h-full flex flex-col">
+      {/* ... existing render content ... */}
       <div className="flex flex-col md:flex-row justify-between items-end shrink-0">
         <div>
           <h1 className="text-4xl font-display font-bold text-white mb-2">Settings</h1>
@@ -378,7 +386,6 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
         </div>
 
         <div className="flex-1 overflow-y-auto custom-scrollbar">
-            {/* ... (General, Operations, Profile tabs remain same) ... */}
             {activeTab === 'GENERAL' && (
                  <Motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-8">
                     <div className="flex justify-between items-start mb-8">
@@ -418,7 +425,6 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
 
             {activeTab === 'OPERATIONS' && (
                 <Motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-8">
-                    {/* ... operations content ... */}
                     <div className="flex justify-between items-start mb-8">
                         <div>
                              <h2 className="text-xl font-bold text-white">Operational Policy</h2>
@@ -619,7 +625,6 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                             <Save size={16} /> Update Profile
                         </button>
                     </div>
-                    {/* Profile Fields */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                         <div>
                             <label className="block text-xs text-lumina-muted uppercase font-bold mb-2">Full Name</label>
@@ -657,6 +662,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
 
             {activeTab === 'PACKAGES' && (
                 <Motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+                    {/* ... existing packages UI ... */}
                     <div className="flex justify-between items-center bg-lumina-surface border border-lumina-highlight p-6 rounded-2xl">
                         <div>
                             <h2 className="text-xl font-bold text-white">Service Packages</h2>
@@ -669,6 +675,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
 
                     {showAddPackage && (
                          <Motion.div initial={{ height: 0, opacity: 0 }} animate={{ height: 'auto', opacity: 1 }} className="bg-lumina-highlight/20 border border-lumina-highlight rounded-2xl p-6 mb-4">
+                             {/* ... package form ... */}
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
                                  <div>
                                      <label className="text-xs text-lumina-muted uppercase font-bold block mb-1">Package Name</label>
@@ -689,7 +696,6 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                              </div>
                              
                              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                 {/* Features */}
                                  <div className="mb-4">
                                      <label className="text-xs text-lumina-muted uppercase font-bold block mb-1">Features</label>
                                      <div className="flex gap-2 mb-2">
@@ -711,7 +717,6 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                                      </div>
                                  </div>
 
-                                 {/* WORKFLOW & ASSETS */}
                                  <div className="mb-4 space-y-4">
                                      <div>
                                          <label className="text-xs text-lumina-muted uppercase font-bold block mb-1 flex items-center gap-1"><ListChecks size={12}/> Default Tasks (Automation)</label>
@@ -807,9 +812,9 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                 </Motion.div>
             )}
 
-            {/* ... (Studios, Integrations, Notifications, Templates, System tabs remain same) ... */}
             {activeTab === 'STUDIOS' && (
                 <div className="space-y-6">
+                    {/* ... existing rooms UI ... */}
                     <div className="flex gap-2 bg-lumina-surface p-4 rounded-xl border border-lumina-highlight mb-6">
                         <input 
                             placeholder="New Room Name" 
@@ -843,6 +848,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
 
             {activeTab === 'INTEGRATIONS' && (
                 <Motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-6">
+                    {/* ... existing integrations UI ... */}
                     <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6">
                         <h2 className="text-lg font-bold text-white mb-4">Apps & Integrations</h2>
                         <div className="space-y-4">
@@ -912,7 +918,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
             {activeTab === 'NOTIFICATIONS' && (
                 <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6">
                     <h2 className="text-lg font-bold text-white mb-6">Notification Preferences</h2>
-                    {/* ... notification toggles ... */}
+                    {/* ... existing notifications UI ... */}
                     <div className="space-y-6">
                         <div>
                             <h3 className="text-xs font-bold text-lumina-muted uppercase tracking-wider mb-3">Email Alerts</h3>
@@ -958,6 +964,7 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
 
             {activeTab === 'TEMPLATES' && (
                 <div className="space-y-6">
+                    {/* ... existing templates UI ... */}
                     <div className="bg-lumina-surface border border-lumina-highlight rounded-2xl p-6">
                         <h2 className="text-lg font-bold text-white mb-4">Message Templates</h2>
                         <div className="space-y-6">
