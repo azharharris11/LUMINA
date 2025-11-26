@@ -148,6 +148,8 @@ export interface Transaction {
   relatedAccountId?: string; 
   category: string; 
   status: 'COMPLETED' | 'PENDING';
+  approvalStatus?: 'PENDING' | 'APPROVED' | 'REJECTED'; // NEW: For Expense Approval
+  submittedBy?: string; // NEW: ID of user who submitted expense
   bookingId?: string; 
   ownerId?: string;
   archived?: boolean;
@@ -223,6 +225,12 @@ export interface WhatsAppTemplates {
   booking: string;
   reminder: string;
   thanks: string;
+}
+
+export interface WorkflowAutomation {
+    id: string;
+    triggerStatus: ProjectStatus;
+    tasks: string[]; // Array of task titles to auto-create
 }
 
 export type SiteTheme = 'NOIR' | 'ETHEREAL' | 'VOGUE' | 'MINIMAL' | 'CINEMA' | 'RETRO' | 'ATELIER' | 'HORIZON' | 'BOLD' | 'IMPACT' | 'CLEANSLATE' | 'AUTHORITY';
@@ -344,16 +352,17 @@ export interface StudioConfig {
   bankName: string;
   bankAccount: string;
   bankHolder: string;
-  requiredDownPaymentPercentage?: number; // NEW: e.g., 50%
-  paymentDueDays?: number; // NEW: Days relative to session (0 = day of, -1 = day before)
+  requiredDownPaymentPercentage?: number; 
+  paymentDueDays?: number;
 
   // Scheduling Policy
-  operatingHoursStart: string; // NEW: "09:00"
-  operatingHoursEnd: string; // NEW: "18:00"
+  operatingHoursStart: string; 
+  operatingHoursEnd: string; 
   bufferMinutes: number; 
   
   // Production Policy
-  defaultTurnaroundDays?: number; // NEW: e.g., 7 days
+  defaultTurnaroundDays?: number; 
+  workflowAutomations?: WorkflowAutomation[]; // NEW: Automation Rules
 
   logoUrl?: string;
   npwp?: string;
@@ -402,9 +411,10 @@ export interface FinanceViewProps {
   transactions?: Transaction[];
   config: StudioConfig;
   onTransfer?: (fromId: string, toId: string, amount: number) => void;
-  onRecordExpense?: (expenseData: { description: string; amount: number; category: string; accountId: string }) => void;
+  onRecordExpense?: (expenseData: { description: string; amount: number; category: string; accountId: string, submittedBy?: string }) => void;
   onSettleBooking?: (bookingId: string, amount: number, accountId: string) => void;
   onDeleteTransaction?: (id: string) => void; 
+  onApproveExpense?: (transactionId: string) => void; // NEW
 }
 
 export interface TeamViewProps {
@@ -413,6 +423,7 @@ export interface TeamViewProps {
   onAddUser?: (user: User) => void;
   onUpdateUser?: (user: User) => void;
   onDeleteUser?: (id: string) => void;
+  currentUser?: User; // Needed for My Earnings
 }
 
 export interface CalendarViewProps {
@@ -454,18 +465,19 @@ export interface NewBookingModalProps {
   accounts: Account[];
   bookings?: Booking[]; 
   clients?: Client[]; 
-  assets?: Asset[]; // NEW: For inventory checking
+  assets?: Asset[]; 
   config: StudioConfig; 
   onAddBooking?: (booking: Booking, paymentDetails?: { amount: number, accountId: string }) => void;
   onAddClient?: (client: Client) => void;
   initialData?: { date: string, time: string, studio: string };
+  googleToken?: string | null;
 }
 
 export interface SiteBuilderViewProps {
   config: StudioConfig;
   packages: Package[];
   users: User[];
-  bookings: Booking[]; // Added bookings here
+  bookings: Booking[]; 
   onUpdateConfig: (config: StudioConfig) => void;
   onPublicBooking?: (data: PublicBookingSubmission) => void; 
 }

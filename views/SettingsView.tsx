@@ -1,8 +1,10 @@
 
+
+
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { Package, StudioConfig, SettingsViewProps, StudioRoom, Booking, User } from '../types';
-import { Settings as SettingsIcon, Tag, Plus, Edit2, ToggleLeft, ToggleRight, Building, Save, X, Layout, MessageSquare, Trash2, Clock, DollarSign, AlertCircle, Sliders, Briefcase, Bell, Link, User as UserIcon, CheckCircle2, Calendar, Archive, CreditCard, Smartphone, Download, RefreshCcw, HardDrive, Check } from 'lucide-react';
+import { Package, StudioConfig, SettingsViewProps, StudioRoom, Booking, User, WorkflowAutomation, ProjectStatus } from '../types';
+import { Settings as SettingsIcon, Tag, Plus, Edit2, ToggleLeft, ToggleRight, Building, Save, X, Layout, MessageSquare, Trash2, Clock, DollarSign, AlertCircle, Sliders, Briefcase, Bell, Link, User as UserIcon, CheckCircle2, Calendar, Archive, CreditCard, Smartphone, Download, RefreshCcw, HardDrive, Check, Zap } from 'lucide-react';
 
 const Motion = motion as any;
 
@@ -19,6 +21,10 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
   const [localConfig, setLocalConfig] = useState<StudioConfig>(config);
   
   const [profileForm, setProfileForm] = useState<Partial<User>>({ name: '', phone: '', avatar: '', specialization: '' });
+
+  // Workflow State
+  const [newAutomation, setNewAutomation] = useState<Partial<WorkflowAutomation>>({ triggerStatus: 'SHOOTING', tasks: [] });
+  const [taskInput, setTaskInput] = useState('');
 
   const [notifications, setNotifications] = useState({
       email: { booking: true, payment: true, reminder: false },
@@ -247,6 +253,40 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
       downloadAnchorNode.remove();
   };
 
+  // Automation Handlers
+  const handleAddTaskToAutomation = () => {
+      if(taskInput.trim()) {
+          setNewAutomation(prev => ({ ...prev, tasks: [...(prev.tasks || []), taskInput.trim()] }));
+          setTaskInput('');
+      }
+  };
+
+  const handleAddAutomation = () => {
+      if(newAutomation.triggerStatus && newAutomation.tasks && newAutomation.tasks.length > 0) {
+          const automation: WorkflowAutomation = {
+              id: `wf-${Date.now()}`,
+              triggerStatus: newAutomation.triggerStatus,
+              tasks: newAutomation.tasks
+          };
+          const updatedConfig = { 
+              ...localConfig, 
+              workflowAutomations: [...(localConfig.workflowAutomations || []), automation] 
+          };
+          setLocalConfig(updatedConfig);
+          if (onUpdateConfig) onUpdateConfig(updatedConfig);
+          setNewAutomation({ triggerStatus: 'SHOOTING', tasks: [] });
+      }
+  };
+
+  const handleDeleteAutomation = (id: string) => {
+      const updatedConfig = { 
+          ...localConfig, 
+          workflowAutomations: (localConfig.workflowAutomations || []).filter(a => a.id !== id) 
+      };
+      setLocalConfig(updatedConfig);
+      if (onUpdateConfig) onUpdateConfig(updatedConfig);
+  };
+
   const displayedPackages = packages.filter(p => !p.archived);
 
   return (
@@ -413,6 +453,78 @@ const SettingsView: React.FC<ExtendedSettingsViewProps> = ({ packages, config, o
                                     />
                                     <p className="text-[10px] text-lumina-muted mt-1">Used if package-specific time is not set.</p>
                                 </div>
+                            </div>
+                        </div>
+
+                        {/* WORKFLOW AUTOMATION */}
+                        <div className="border-t border-lumina-highlight pt-6">
+                            <h3 className="text-sm font-bold text-lumina-accent uppercase tracking-wider mb-4 flex items-center gap-2">
+                                <Zap size={16} /> Workflow Automation
+                            </h3>
+                            
+                            <div className="bg-lumina-base border border-lumina-highlight rounded-xl p-4 mb-4">
+                                <div className="flex gap-3 mb-3">
+                                    <div className="w-1/3">
+                                        <label className="text-xs font-bold text-lumina-muted uppercase block mb-1">If Status Is...</label>
+                                        <select 
+                                            className="w-full bg-lumina-surface border border-lumina-highlight rounded-lg p-2 text-xs text-white focus:border-lumina-accent outline-none"
+                                            value={newAutomation.triggerStatus}
+                                            onChange={e => setNewAutomation({...newAutomation, triggerStatus: e.target.value as ProjectStatus})}
+                                        >
+                                            <option value="SHOOTING">Shooting</option>
+                                            <option value="CULLING">Culling</option>
+                                            <option value="EDITING">Editing</option>
+                                            <option value="REVIEW">Review</option>
+                                            <option value="COMPLETED">Completed</option>
+                                        </select>
+                                    </div>
+                                    <div className="flex-1">
+                                        <label className="text-xs font-bold text-lumina-muted uppercase block mb-1">Add These Tasks</label>
+                                        <div className="flex gap-2">
+                                            <input 
+                                                className="flex-1 bg-lumina-surface border border-lumina-highlight rounded-lg p-2 text-xs text-white focus:border-lumina-accent outline-none"
+                                                placeholder="Task name (e.g. Backup RAW)"
+                                                value={taskInput}
+                                                onChange={e => setTaskInput(e.target.value)}
+                                                onKeyDown={e => e.key === 'Enter' && handleAddTaskToAutomation()}
+                                            />
+                                            <button onClick={handleAddTaskToAutomation} className="p-2 bg-lumina-highlight rounded hover:text-white text-lumina-muted">+</button>
+                                        </div>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {newAutomation.tasks?.map((t, i) => (
+                                                <span key={i} className="text-[10px] bg-lumina-surface border border-lumina-highlight px-2 py-1 rounded text-lumina-muted">{t}</span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                </div>
+                                <button 
+                                    onClick={handleAddAutomation}
+                                    disabled={!newAutomation.tasks || newAutomation.tasks.length === 0}
+                                    className="w-full py-2 bg-lumina-highlight hover:bg-lumina-accent hover:text-lumina-base text-lumina-muted text-xs font-bold rounded-lg transition-colors disabled:opacity-50"
+                                >
+                                    Create Automation Rule
+                                </button>
+                            </div>
+
+                            <div className="space-y-2">
+                                {(localConfig.workflowAutomations || []).map(auto => (
+                                    <div key={auto.id} className="flex justify-between items-center p-3 bg-lumina-base border border-lumina-highlight rounded-lg">
+                                        <div>
+                                            <div className="flex items-center gap-2 mb-1">
+                                                <span className="text-xs text-lumina-muted font-mono">WHEN</span>
+                                                <span className="text-xs font-bold text-white bg-lumina-surface px-2 py-0.5 rounded border border-lumina-highlight">{auto.triggerStatus}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs text-lumina-muted font-mono">CREATE</span>
+                                                <span className="text-xs text-lumina-accent truncate">{auto.tasks.join(', ')}</span>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => handleDeleteAutomation(auto.id)} className="text-lumina-muted hover:text-rose-500"><Trash2 size={14}/></button>
+                                    </div>
+                                ))}
+                                {(localConfig.workflowAutomations || []).length === 0 && (
+                                    <p className="text-xs text-lumina-muted italic text-center py-2">No automations configured.</p>
+                                )}
                             </div>
                         </div>
 
